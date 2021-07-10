@@ -29,6 +29,7 @@ import shap
 def check_combinations(path, normexpr, labelinfo, metadata, rejection_cutoff,
                         val_normexpr, val_metadata, layer_paths, model_paths):
     print(blah)
+    # print which option the model is using
 
 
 # Ensures all the user giv:en variables for training exist / are in the correct format
@@ -116,7 +117,8 @@ def construct_tree(labelinfo, all_layers):
 class Layer:
     
     # level is the column of the metadata file in which the name of the layer appears
-    # xgbmodel, cvmetrics, finalmetrics, cfm, pr are path names to those files
+    # xgbmodel is a trained XGBoost classifier object
+    # cvmetrics, finalmetrics, cfm, pr are path names to those files
     # predictions, roc, fr are lists of path names
     def __init__(self, name, level, labeldict=None, xgbmodel=None, finetuning=None, cvmetrics=None,
                  finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, fr=None, pickle=None):
@@ -157,7 +159,7 @@ class Layer:
         if self.finetuned():
             return_str += 'Finetuning Log: ' + self.finetuning + '\n'
         if self.trained():
-            return_str += 'XGB Model: ' + self.xgbmodel + '\n'
+            return_str += 'XGB Model: ' + self.name + '_xgbmodel.sav' + '\n'
             return_str += '10-Fold Cross Validation Metrics: ' + self.cvmetrics + '\n'
             return_str += 'Final Metrics (10%): ' + self.finalmetrics + '\n'
             return_str += 'Predictions (no rejection): ' + self.predictions[0] + '\n'
@@ -340,8 +342,7 @@ class Layer:
     # cv_final_val is a naming string to differentiate between cv, final, and validation metrics
     def model_metrics(self, cv_final_val, X_test, Y_test):
         d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
-        xgb_model = pickle.load(open(path + self.xgbmodel, 'rb'))
-        probabilities_xgb = xgb_model.predict(d_test)
+        probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         target_names = [str(x) for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         metrics = classification_report(Y_test, predictions_xgb, target_names=target_names)
@@ -357,8 +358,7 @@ class Layer:
     # train_val is a naming string to differentiate between train/test predictions and validation predictions
     def cell_predictions(self, train_val, rejectcutoffs, test_cellnames, X_test, Y_test=None):
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
-        xgb_model = pickle.load(open(path + self.xgbmodel, 'rb'))
-        probabilities_xgb = xgb_model.predict(d_test)
+        probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         self.labeldict[len(self.labeldict)] = 'Unclassified'
         for cutoff in rejectcutoffs:
@@ -387,8 +387,7 @@ class Layer:
     # Outputs a confusion matrix of the Layer model's results on a provided test set
     def cfsn_mtx(self, train_val, X_test, Y_test):
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
-        xgb_model = pickle.load(open(path + self.xgbmodel, 'rb'))
-        probabilities_xgb = xgb_model.predict(d_test)
+        probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         classnames = [str(x) for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         
@@ -420,8 +419,7 @@ class Layer:
     # Outputs 3 figures: micro and macro ROC curves, per class ROC curves, and all combined
     def roc_curves(self, X_test, Y_test):
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
-        xgb_model = pickle.load(open(path + self.xgbmodel, 'rb'))
-        probabilities_xgb = xgb_model.predict(d_test)
+        probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
     
@@ -525,8 +523,7 @@ class Layer:
     # Outputs 1 figure: per class PR curvs and a micro PR curve
     def pr_curves(self, X_test, Y_test):
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
-        xgb_model = pickle.load(open(path + self.xgbmodel, 'rb'))
-        probabilities_xgb = xgb_model.predict(d_test)
+        probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
     
@@ -587,16 +584,14 @@ class Layer:
             Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
             d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
             cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
-            pickle.dump(cv_model, open(path + self.name + '_xgbmodel.sav', 'wb')) # temporarily dump cv 81% model
-            self.xgbmodel = self.name + '_xgbmodel.sav'
+            self.xgbmodel = cv_model # temporarily set xgbmodel to cv 81% model
             self.model_metrics('cv', X_valid, Y_valid)
             self.cvmetrics = self.name + '_cvmetrics.txt'
     
         # 90% model, 10% testing
         d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
         temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
-        pickle.dump(temp_model, open(path + self.name + '_xgbmodel.sav', 'wb')) # temporarily dump 90% model
-        self.xgbmodel = self.name + '_xgbmodel.sav'
+        self.xgbmodel = temp_model # temporarily set xgbmodel to 90% model
         self.model_metrics('final', X_test, Y_test)
         self.finalmetrics = self.name + '_finalmetrics.txt'
         self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
@@ -615,9 +610,9 @@ class Layer:
         d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
-        self.xgbmodel = self.name + '_xgbmodel.sav'
+        self.xgbmodel = final_model
         
-        return temp_model
+        return temp_model # for feature ranking calculation
 
     
     # Outputs SHAP feature ranking plots overall AND for each class if conducting classification
@@ -680,7 +675,7 @@ class Layer:
     # 1 csv file outputted for each rejection cutoff in the list rejectioncutoffs
     # A cutoff of 0.5 means the probability of the label must be >=0.5 for a prediction to be called
     # A cutoff of 0 is equivalent to no rejection option
-    def validate_layer(self, rejectcutoffs, normexprpkl, metadatacsv=None):
+    def predict_layer(self, rejectcutoffs, normexprpkl, metadatacsv=None):
         X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv) # Y will be None if metadatacsv=None
         self.cell_predictions('validation', rejectcutoffs, all_cellnames, X, Y) # can handle Y=None
         if metadatacsv != None:
@@ -704,32 +699,42 @@ def export_layers(all_layers):
             pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
-def train(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit):
-    # MAKE A NEW FOLDER FOR TRAINING IN CWDIR
+def training(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit):
     check_train = check_trainingfiles(path, normexpr, labelinfo, metadata, rejection_cutoff)
     if check_train != '':
         print(check_train)
+        return None
     else:
+        path = os.path.join(path, 'training')
+        os.mkdir(path)
+        os.chdir(path)
         csv2pkl(normexpr)
         normexpr = normexpr[:-3] + 'pkl'
         all_layers = [Layer('Root', 0)]
         construct_tree(labelinfo, all_layers)
         print(all_layers)
         for layer in all_layers:
-            # MAKE NEW FOLDER FOR EACH LAYER
+            path = os.path.join(path, layer.name.replace(' ', ''))
+            os.mkdir(path)
+            os.chdir(path)
             if layer.name == 'Root': # root top layer
                 parameters = layer.finetune(1, testsplit, normexpr, metadata)
                 parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 7, 'subsample': 0.6,
                               'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
                 print(parameters)
             layer.train_layer(normexpr, metadata, parameters, testsplit, [0, rejection_cutoff])
+            os.chdir('..') # return to training directory
+            path = os.getcwd()
         training_summary(all_layers)
         export_layers(all_layers)
         print('Training Complete')
+        os.chdir('..') # return to cellpy directory
+        path = os.getcwd()
+        return all_layers
 
 
 # Ensures all the user given variables for validation exist / are in the correct format
-def check_validationfiles(val_normexpr, val_metadata=None, layer_paths=None):
+def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
     return_str = ''
     if not os.path.exists(val_normexpr):
         return_str += 'Given validation normalized expression data file does not exist in cwdir/n'
@@ -794,34 +799,31 @@ def reorder_pickle(csvpath, featurenames):
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
 
 
-def validation(layer_paths, val_normexpr, val_metadata):
-    # MAKE A NEW FOLDER FOR VALIDATION IN CWDIR
-    all_layers = None
+def prediction(val_normexpr, val_metadata, all_layers=None, layer_paths=None):
     if layer_paths != None:
-        check_val = check_validationfiles(val_normexpr, val_metadata, layer_paths)
+        check_val = check_predictionfiles(val_normexpr, val_metadata, layer_paths)
         if check_val != '':
             print(check_val)
         else:
             all_layers = import_layers(layer_paths)
-    elif model_paths != None: # model_paths and modelinfo must appear together
-        check_val = check_validationfiles(val_normexpr, val_metadata, layer_paths)
-        if check_val != '':
-            print(check_val)
-        else:
-            all_layers = [Layer('Root', 0)]
-            construct_tree(labelinfo, all_layers)
-            print(all_layers)
-            for layer in all_layers:
-                layer.xgbmodel
     if all_layers is not None:
+        path = os.path.join(path, 'prediction')
+        os.mkdir(path)
+        os.chdir(path)
         xgb_model = pickle.load(open(path + all_layers[0].xgbmodel, 'rb'))
         featurenames = xgb_model.feature_names
         reorder_pickle(val_normexpr, featurenames)
         val_normexpr = val_normexpr[:-3] + 'pkl'
         for layer in all_layers:
-            # NEW FOLDER FOR EACH LAYER
-            layer.validate_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+            path = os.path.join(path, layer.name.replace(' ', ''))
+            os.mkdir(path)
+            os.chdir(path)
+            layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+            os.chdir('..') # return to prediction directory
+            path = os.getcwd()
         print('Validation Complete')
+        os.chdir('..') # return to cellpy directory
+        path = os.getcwd()
 
 # Main function, completes entire pipeline
 def main():
@@ -835,41 +837,43 @@ def main():
     #           (path, layer_paths, rejection_cutoff, val_normexpr, val_metdata)
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
-    # 4a. just validation: load xgbmodels, modelinfo, validation w/ val_metadata
-    #           (path, model_paths, labelinfo, rejection_cutoff, val_normexpr, val_metdata)
-    # 4b. just validation: load xgbmodels, modelinfo, validation w/o val_metadata
-    #           (path, model_paths, labelinfo, rejection_cutoff, val_normexpr)
     
     global path, rejection_cutoff
-    # path = current working dir
-    path = '/scratch/groups/smwu/sidraxu/aaaa/'
-    # path = '/Users/sidraxu/Downloads/asdf/'
-    normexpr = path + 'zheng_normexpr.csv' #remove path +
-    labelinfo = path + 'zheng_labelinfo.csv'
-    metadata = path + 'zheng_metadata.csv'
+    path = os.getcwd()
+    normexpr = '/Users/sidraxu/Downloads/asdf/zheng_normexpr.csv'
+    labelinfo = '/Users/sidraxu/Downloads/asdf/zheng_labelinfo.csv'
+    metadata = '/Users/sidraxu/Downloads/asdf/zheng_metadata.csv'
     testsplit = 0.1
     rejection_cutoff = 0.5
-    val_normexpr = path + 'pbmc_normexpr.csv'
-    val_metadata = path + 'pbmc_metadata.csv'
+    val_normexpr = '/Users/sidraxu/Downloads/asdf/pbmc_normexpr.csv'
+    val_metadata = '/Users/sidraxu/Downloads/asdf/pbmc_metadata.csv'
     layer_paths = None # ['Root_object.pkl', 'Cardiomyocytes_object.pkl', 'Ventricular CM_object.pkl']
-    model_paths = None # ['Root_xgbmodel.sav', 'Cardiomyocytes_xgbmodel.sav', 'Ventricular CM_xgbmodel.sav']
     # MAKE FEATURE RANKING OPTIONAL
     
     # user inputs which option they want
     check_combinations(path, normexpr, labelinfo, metadata, rejection_cutoff,
                         val_normexpr, val_metadata, layer_paths, model_paths)
-    # print which option the model is using
+    
+    print('Creating directory "cellpy" in cwdir ' + path)
+    path = os.path.join(path, 'cellpy')
+    os.mkdir(path)
+    os.chdir(path)
     
     # If training option is called
     if normexpr != None: # normexpr and metadata must appear together
-        train(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit)
+        all_layers = training(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit)
     
-    # If validation option is called
+    # If prediction option is called
     if val_normexpr != None:
-        validation(layer_paths, val_normexpr, val_metadata)
+        # directly from training option
+        if all_layers != None:
+            prediction(val_normexpr, val_metadata, objects=all_layers)
+        # user inputs list of Layer objects
+        elif layer_paths != None:
+            prediction(val_normexpr, val_metadata, object_paths=layer_paths)
 
     # TO-DO: validation summary file, merge feature ranking and xgbmodel together?, feature_names global?
-    # check_combinations(), check_files(), check_files2(), import models option
+    # check_combinations(), check_files(), check_files2()
     # command line conversion w/ all possible input options
 
 
