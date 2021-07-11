@@ -1,0 +1,61 @@
+Object: Root_object.pkl
+Layer: Root
+Level: 0
+Label Dictionary: {0: 'Cardiomyocytes', 1: 'Endothelial Cells', 2: 'Epicardial Cells', 3: 'Granulocytes', 4: 'Lymphocytes', 5: 'Macrophages', 6: 'Mesenchymal Cells', 7: 'Red Blood Cells'}
+Finetuning Log: Root_finetuning.csv
+XGB Model: Root_xgbmodel.sav
+10-Fold Cross Validation Metrics: Root_cvmetrics.txt
+Final Metrics (10%): Root_finalmetrics.txt
+Predictions (no rejection): Root_trainingpredictions_reject0.csv
+Predictions (0.5 rejection cutoff): Root_trainingpredictions_reject0.5.csv
+Confusion Matrix (10%, no rejection): Root_confusionmatrix.svg
+Micro/Macro ROC Curves: Root_miacroroc.svg
+Per-Class ROC Curves: Root_classroc.svg
+All Combined ROC Curves: Root_allroc.svg
+Precision-Recall Graph (10%, no rejection): Root_allpr.svg
+Overall Feature Ranking: Root_overallfr.svg
+Root--Cardiomyocytes Feature Ranking: Root_class0fr.svg
+Root--Endothelial Cells Feature Ranking: Root_class1fr.svg
+Root--Epicardial Cells Feature Ranking: Root_class2fr.svg
+Root--Granulocytes Feature Ranking: Root_class3fr.svg
+Root--Lymphocytes Feature Ranking: Root_class4fr.svg
+Root--Macrophages Feature Ranking: Root_class5fr.svg
+Root--Mesenchymal Cells Feature Ranking: Root_class6fr.svg
+Root--Red Blood Cells Feature Ranking: Root_class7fr.svg
+
+Object: Cardiomyocytes_object.pkl
+Layer: Cardiomyocytes
+Level: 1
+Label Dictionary: {0: 'Atrial CM', 1: 'Ventricular CM'}
+XGB Model: Cardiomyocytes_xgbmodel.sav
+10-Fold Cross Validation Metrics: Cardiomyocytes_cvmetrics.txt
+Final Metrics (10%): Cardiomyocytes_finalmetrics.txt
+Predictions (no rejection): Cardiomyocytes_trainingpredictions_reject0.csv
+Predictions (0.5 rejection cutoff): Cardiomyocytes_trainingpredictions_reject0.5.csv
+Confusion Matrix (10%, no rejection): Cardiomyocytes_confusionmatrix.svg
+Micro/Macro ROC Curves: Cardiomyocytes_miacroroc.svg
+Per-Class ROC Curves: Cardiomyocytes_classroc.svg
+All Combined ROC Curves: Cardiomyocytes_allroc.svg
+Precision-Recall Graph (10%, no rejection): Cardiomyocytes_allpr.svg
+Overall Feature Ranking: Cardiomyocytes_overallfr.svg
+Cardiomyocytes--Atrial CM Feature Ranking: Cardiomyocytes_class0fr.svg
+Cardiomyocytes--Ventricular CM Feature Ranking: Cardiomyocytes_class1fr.svg
+
+Object: Ventricular CM_object.pkl
+Layer: Ventricular CM
+Level: 2
+Label Dictionary: {0: 'LV', 1: 'RV'}
+XGB Model: Ventricular CM_xgbmodel.sav
+10-Fold Cross Validation Metrics: Ventricular CM_cvmetrics.txt
+Final Metrics (10%): Ventricular CM_finalmetrics.txt
+Predictions (no rejection): Ventricular CM_trainingpredictions_reject0.csv
+Predictions (0.5 rejection cutoff): Ventricular CM_trainingpredictions_reject0.5.csv
+Confusion Matrix (10%, no rejection): Ventricular CM_confusionmatrix.svg
+Micro/Macro ROC Curves: Ventricular CM_miacroroc.svg
+Per-Class ROC Curves: Ventricular CM_classroc.svg
+All Combined ROC Curves: Ventricular CM_allroc.svg
+Precision-Recall Graph (10%, no rejection): Ventricular CM_allpr.svg
+Overall Feature Ranking: Ventricular CM_overallfr.svg
+Ventricular CM--LV Feature Ranking: Ventricular CM_class0fr.svg
+Ventricular CM--RV Feature Ranking: Ventricular CM_class1fr.svg
+

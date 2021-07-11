@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-print("Hello World")
-
+import sys
 import os
 import csv
 import pickle
@@ -24,28 +23,80 @@ from sklearn.metrics import average_precision_score
 import shap
 
 
-# # Ensures given files satisfy one of the given options
-# # Certain files must appear together for training and/or validation
-def check_combinations(path, normexpr, labelinfo, metadata, rejection_cutoff,
-                        val_normexpr, val_metadata, layer_paths, model_paths):
-    print(blah)
-    # print which option the model is using
+# Ensures given files satisfy one of the given options
+# Certain files must appear together for training and/or validation
+# Ensures user input for train or predict matches file inputs
+def check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, testsplit, shap_on,
+                       rejection_cutoff, val_normexpr, val_metadata, layer_paths):
+    cellpy_train = False
+    cellpy_predict = False
+    passed = True
+    train_list = [normexpr, labelinfo, metadata, shap_on, testsplit]
+    if train_list.count(None) != len(train_list): # if the list contains anything not None
+        print('Training option selected')
+        train_list.append(rejection_cutoff)
+        cellpy_train = True
+        if user_train != cellpy_train:
+            print('ERROR: User selection for training option contradicts inputted files')
+            passed = False
+        if train_list[0] is None:
+            print('ERROR: Normalized expression matrix for training must be provided to resume')
+            passed = False
+        if train_list[1] is None:
+            print('ERROR: Label information file must be provided to resume')
+            passed = False
+        if train_list[2] is None:
+            print('ERROR: Metadata file must be provided to resume')
+            passed = False
+        if train_list[3] is None:
+            print('ERROR: Test split amount must be provided to resume')
+            passed = False
+        if train_list[4] is None:
+            print('ERROR: Feature ranking on/off must be provided to resume')
+            passed = False
+        if train_list[5] is None:
+            print('ERROR: Rejection cutoff value must be provided to resume')
+            passed = False
+    
+    predict_list = [val_normexpr, val_metadata, layer_paths]
+    if predict_list.count(None) != len(predict_list): # if the list contains anything not None
+        if val_metadata is not None:
+            print('Prediction option with accuracy calculation selected')
+        else:
+            print('Prediction option without accuracy calculation selected')
+        predict_list.append(rejection_cutoff)
+        cellpy_predict = True
+        if user_predict != cellpy_predict:
+            print('ERROR: User selection for prediction option contradicts inputted files')
+            passed = False
+        if predict_list[0] is None:
+            print('ERROR: Normalized expression matrix for prediction must be provided to resume')
+            passed = False
+        if predict_list[2] is None and len(train_list)<6: # and training option is not on
+            print('ERROR: Path names to Layer objects must be provided to resume')
+            passed = False
+        if predict_list[3] is None:
+            print('ERROR: Rejection cutoff value must be provided to resume')
+            passed = False
+    return passed
 
 
 # Ensures all the user giv:en variables for training exist / are in the correct format
-def check_trainingfiles(path, normexpr, labelinfo, metadata, rejection_cutoff):
-    return_str = ''
-    if not os.path.isdir(path):
-        return_str += 'Given path is not a directory/n'
+def check_trainingfiles(normexpr, labelinfo, metadata, rejection_cutoff):
+    passed = True
     if not os.path.exists(normexpr):
-        return_str += 'Given normalized expression data file does not exist in cwdir/n'
+        print('Given normalized expression data file does not exist')
+        passed = False
     if not os.path.exists(labelinfo):
-        return_str += 'Given label info file does not exist in cwdir/n'
+        print('Given label info file does not exist')
+        passed = False
     if not os.path.exists(metadata):
-        return_str += 'Given metadata file does not exist in cwdir/n'
+        print('Given metadata file does not exist')
+        passed = False
     if rejection_cutoff > 1 or rejection_cutoff < 0:
-        return_str += 'Given rejection cutoff must be a value between 0 and 1/n'
-    return return_str
+        print('Given rejection cutoff must be a value between 0 and 1')
+        passed = False
+    return passed
 
 
 # Converts the normalized expression csv into a pkl
@@ -665,10 +716,11 @@ class Layer:
     #               otherwise same length as subsetcriteria and corresponds to each subsetcriterium
     # labeldicts and rejectcutoffs should be set to [None] if conducting regression
     # When training a layer with subsetcriteria, new pkl and csv files are created for each subsetcriterium
-    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs):
+    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, shap_on):
         X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
         temp_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
-        self.feature_ranking(temp_model, normexprpkl, metadatacsv, testsplit)
+        if shap_on is True:
+            self.feature_ranking(temp_model, normexprpkl, metadatacsv, testsplit)
     
     
     # Outputs predictions of the 90% model on the 10% test set in a given dataset
@@ -699,56 +751,67 @@ def export_layers(all_layers):
             pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
-def training(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit):
-    check_train = check_trainingfiles(path, normexpr, labelinfo, metadata, rejection_cutoff)
-    if check_train != '':
-        print(check_train)
-        return None
-    else:
-        path = os.path.join(path, 'training')
+def training(normexpr, labelinfo, metadata, testsplit, rejection_cutoff, shap_on):
+    global path
+    path = os.path.join(path, 'training')
+    os.mkdir(path)
+    os.chdir(path)
+    csv2pkl(normexpr)
+    normexpr = normexpr[:-3] + 'pkl'
+    all_layers = [Layer('Root', 0)]
+    construct_tree(labelinfo, all_layers)
+    print(all_layers)
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
         os.mkdir(path)
         os.chdir(path)
-        csv2pkl(normexpr)
-        normexpr = normexpr[:-3] + 'pkl'
-        all_layers = [Layer('Root', 0)]
-        construct_tree(labelinfo, all_layers)
-        print(all_layers)
-        for layer in all_layers:
-            path = os.path.join(path, layer.name.replace(' ', ''))
-            os.mkdir(path)
-            os.chdir(path)
-            if layer.name == 'Root': # root top layer
-                parameters = layer.finetune(1, testsplit, normexpr, metadata)
-                parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 7, 'subsample': 0.6,
-                              'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
-                print(parameters)
-            layer.train_layer(normexpr, metadata, parameters, testsplit, [0, rejection_cutoff])
-            os.chdir('..') # return to training directory
-            path = os.getcwd()
-        training_summary(all_layers)
-        export_layers(all_layers)
-        print('Training Complete')
-        os.chdir('..') # return to cellpy directory
+        path = path + '/'
+        if layer.name == 'Root': # root top layer
+            parameters = layer.finetune(2, testsplit, normexpr, metadata)
+            parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 7, 'subsample': 0.6,
+                          'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
+            print(parameters)
+        layer.train_layer(normexpr, metadata, parameters, testsplit, [0, rejection_cutoff], shap_on)
+        os.chdir('..') # return to training directory
         path = os.getcwd()
-        return all_layers
+    path = path + '/'
+    training_summary(all_layers)
+    export_layers(all_layers)
+    print('Training Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+    return all_layers
 
 
 # Ensures all the user given variables for validation exist / are in the correct format
 def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
-    return_str = ''
+    passed = True
     if not os.path.exists(val_normexpr):
-        return_str += 'Given validation normalized expression data file does not exist in cwdir/n'
+        print('Given validation normalized expression data file does not exist')
+        passed = False
     if val_metadata != None and not os.path.exists(val_metadata):
-        return_str += 'Given validation metadata file does not exist in cwdir/n'
+        print('Given validation metadata file does not exist')
+        passed = False
     # check all layer paths are objects and contain a trained xgb model and label dict
-    return return_str
+    if layer_paths != None:
+        for i in range(len(layer_paths)):
+            layer_path = layer_paths[i]
+            if not os.path.exists(layer_path):
+                print('Given Layer object ' + str(i) + ' does not exist')
+                passed = False
+            else:
+                layer = pd.read_pickle(layer_path)
+                if layer.trained() is False:
+                    print('Given Layer object ' + str(i) + ' is not trained')
+                    passed = False
+    return passed
 
 
 # Imports Layer objects from a list of given paths
 def import_layers(layer_paths):
     layers = []
     for layer_path in layer_paths:
-         layer = pd.read_pickle(path + layer_path)
+         layer = pd.read_pickle(layer_path)
          layers.append(layer)
     return layers
 
@@ -799,31 +862,28 @@ def reorder_pickle(csvpath, featurenames):
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
 
 
-def prediction(val_normexpr, val_metadata, all_layers=None, layer_paths=None):
-    if layer_paths != None:
-        check_val = check_predictionfiles(val_normexpr, val_metadata, layer_paths)
-        if check_val != '':
-            print(check_val)
-        else:
-            all_layers = import_layers(layer_paths)
-    if all_layers is not None:
-        path = os.path.join(path, 'prediction')
+def prediction(val_normexpr, val_metadata, all_layers=None, object_paths=None):
+    if object_paths != None:
+        all_layers = import_layers(object_paths)
+    global path
+    path = os.path.join(path, 'prediction')
+    os.mkdir(path)
+    os.chdir(path)
+    featurenames = all_layers[0].xgbmodel.feature_names
+    reorder_pickle(val_normexpr, featurenames)
+    val_normexpr = val_normexpr[:-3] + 'pkl'
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
         os.mkdir(path)
         os.chdir(path)
-        xgb_model = pickle.load(open(path + all_layers[0].xgbmodel, 'rb'))
-        featurenames = xgb_model.feature_names
-        reorder_pickle(val_normexpr, featurenames)
-        val_normexpr = val_normexpr[:-3] + 'pkl'
-        for layer in all_layers:
-            path = os.path.join(path, layer.name.replace(' ', ''))
-            os.mkdir(path)
-            os.chdir(path)
-            layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
-            os.chdir('..') # return to prediction directory
-            path = os.getcwd()
-        print('Validation Complete')
-        os.chdir('..') # return to cellpy directory
+        path = path + '/'
+        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+        os.chdir('..') # return to prediction directory
         path = os.getcwd()
+    print('Validation Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+
 
 # Main function, completes entire pipeline
 def main():
@@ -838,42 +898,54 @@ def main():
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
     
+    # args = sys.argv[1:]
+    # print(args)
+    
     global path, rejection_cutoff
     path = os.getcwd()
-    normexpr = '/Users/sidraxu/Downloads/asdf/zheng_normexpr.csv'
-    labelinfo = '/Users/sidraxu/Downloads/asdf/zheng_labelinfo.csv'
-    metadata = '/Users/sidraxu/Downloads/asdf/zheng_metadata.csv'
+    user_train = True
+    user_predict = True
+    normexpr = '/Users/sidraxu/Downloads/asdf/cui_normexpr.csv'
+    labelinfo = '/Users/sidraxu/Downloads/asdf/cui_labelinfo.csv'
+    metadata = '/Users/sidraxu/Downloads/asdf/cui_metadata.csv'
     testsplit = 0.1
+    shap_on = True
     rejection_cutoff = 0.5
-    val_normexpr = '/Users/sidraxu/Downloads/asdf/pbmc_normexpr.csv'
-    val_metadata = '/Users/sidraxu/Downloads/asdf/pbmc_metadata.csv'
-    layer_paths = None # ['Root_object.pkl', 'Cardiomyocytes_object.pkl', 'Ventricular CM_object.pkl']
-    # MAKE FEATURE RANKING OPTIONAL
+    val_normexpr = '/Users/sidraxu/Downloads/asdf/lmna_normexpr.csv'
+    val_metadata = None # '/Users/sidraxu/Downloads/asdf/pbmc_metadata.csv'
+    layer_paths = ['/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Root_object.pkl',
+                   '/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Cardiomyocytes_object.pkl',
+                   '/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Ventricular CM_object.pkl']
     
-    # user inputs which option they want
-    check_combinations(path, normexpr, labelinfo, metadata, rejection_cutoff,
-                        val_normexpr, val_metadata, layer_paths, model_paths)
+    passed_options = check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, testsplit,
+                                        shap_on, rejection_cutoff, val_normexpr, val_metadata, layer_paths)
+    if passed_options is False:
+        return
     
-    print('Creating directory "cellpy" in cwdir ' + path)
     path = os.path.join(path, 'cellpy')
-    os.mkdir(path)
+    if not os.path.isdir(path):
+        print('Creating directory "cellpy" in cwdir ' + path)
+        os.mkdir(path)
     os.chdir(path)
     
     # If training option is called
-    if normexpr != None: # normexpr and metadata must appear together
-        all_layers = training(path, normexpr, labelinfo, metadata, rejection_cutoff, testsplit)
+    if user_train is True:
+        passed_train = check_trainingfiles(normexpr, labelinfo, metadata, rejection_cutoff)
+        if passed_train is True:
+            all_layers = training(normexpr, labelinfo, metadata, testsplit, rejection_cutoff, shap_on)
     
     # If prediction option is called
-    if val_normexpr != None:
-        # directly from training option
-        if all_layers != None:
-            prediction(val_normexpr, val_metadata, objects=all_layers)
-        # user inputs list of Layer objects
-        elif layer_paths != None:
-            prediction(val_normexpr, val_metadata, object_paths=layer_paths)
+    if user_predict is True:
+        passed_predict = check_predictionfiles(val_normexpr, val_metadata, layer_paths)
+        if passed_predict is True:
+            # directly from training option
+            if passed_train is True:
+                prediction(val_normexpr, val_metadata, all_layers=all_layers)
+            # user inputs list of Layer objects
+            elif layer_paths is not None:
+                prediction(val_normexpr, val_metadata, object_paths=layer_paths)
 
     # TO-DO: validation summary file, merge feature ranking and xgbmodel together?, feature_names global?
-    # check_combinations(), check_files(), check_files2()
     # command line conversion w/ all possible input options
 
 
