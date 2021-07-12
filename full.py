@@ -310,7 +310,7 @@ class Layer:
         Y = labels.values
         np.random.seed(0)
         X, Y = shuffle(X, Y)
-        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)#, stratify=Y)
+        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True, stratify = Y[:,self.level+1])
         test_cellnames = Y_test[:,0]
         test_cellnames = test_cellnames.ravel()
 
@@ -319,7 +319,7 @@ class Layer:
         Y = labels[labelcolumn].values
         np.random.seed(0)
         X, Y = shuffle(X, Y)
-        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)#, stratify=Y)
+        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True, stratify = Y)
         print('Training Samples: ' + str(len(X_tr)) + ', Testing Samples: ' + str(len(X_test)))
         return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames;
     
@@ -796,7 +796,7 @@ def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
     if val_metadata != None and not os.path.exists(val_metadata):
         print('Given validation metadata file does not exist')
         passed = False
-    # check all layer paths are objects and contain a trained xgb model and label dict
+    # check all layer paths are objects and contain a trained xgb model
     if layer_paths != None:
         for i in range(len(layer_paths)):
             layer_path = layer_paths[i]
@@ -901,8 +901,7 @@ def main():
     #           (path, layer_paths, rejection_cutoff, val_normexpr, val_metdata)
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
-    
-    
+        
     global path, rejection_cutoff
     path = os.getcwd()
     user_train = False
@@ -962,7 +961,7 @@ def main():
     
     path = os.path.join(path, 'cellpy_results')
     if not os.path.isdir(path):
-        print('Created directory "cellpy_results" in cwdir ' + path)
+        print('Created directory "cellpy_results" in cwdir: ' + path)
         os.mkdir(path)
     os.chdir(path)
     
@@ -983,7 +982,8 @@ def main():
             elif layer_paths is not None:
                 prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
 
-    # TO-DO: validation summary file, merge feature ranking and xgbmodel together?, feature_names global?
+    # TO-DO: garbage collector, check file content!
+    # Figure out why computational power so much higher
 
 
 if __name__ == "__main__":
