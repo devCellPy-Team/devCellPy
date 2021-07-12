@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import getopt
 import os
 import csv
 import pickle
@@ -26,17 +27,18 @@ import shap
 # Ensures given files satisfy one of the given options
 # Certain files must appear together for training and/or validation
 # Ensures user input for train or predict matches file inputs
-def check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, testsplit, shap_on,
+def check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit, featrank_on,
                        rejection_cutoff, val_normexpr, val_metadata, layer_paths):
     cellpy_train = False
     cellpy_predict = False
     passed = True
-    train_list = [normexpr, labelinfo, metadata, shap_on, testsplit]
-    if train_list.count(None) != len(train_list): # if the list contains anything not None
+    train_list = [train_normexpr, labelinfo, train_metadata, featrank_on, testsplit]
+    # if the user selected train or provided train variables
+    if (user_train is True) or (train_list.count(None) != len(train_list)):
         print('Training option selected')
         train_list.append(rejection_cutoff)
         cellpy_train = True
-        if user_train != cellpy_train:
+        if user_train is not cellpy_train:
             print('ERROR: User selection for training option contradicts inputted files')
             passed = False
         if train_list[0] is None:
@@ -59,20 +61,21 @@ def check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, 
             passed = False
     
     predict_list = [val_normexpr, val_metadata, layer_paths]
-    if predict_list.count(None) != len(predict_list): # if the list contains anything not None
+    # if the user selected predict or provided predict variables
+    if (user_predict is True) or (predict_list.count(None) != len(predict_list)):
         if val_metadata is not None:
             print('Prediction option with accuracy calculation selected')
         else:
             print('Prediction option without accuracy calculation selected')
         predict_list.append(rejection_cutoff)
         cellpy_predict = True
-        if user_predict != cellpy_predict:
+        if user_predict is not cellpy_predict:
             print('ERROR: User selection for prediction option contradicts inputted files')
             passed = False
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
             passed = False
-        if predict_list[2] is None and len(train_list)<6: # and training option is not on
+        if predict_list[2] is None and len(train_list)<6: # if no objects provided and training option is not on
             print('ERROR: Path names to Layer objects must be provided to resume')
             passed = False
         if predict_list[3] is None:
@@ -82,15 +85,15 @@ def check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, 
 
 
 # Ensures all the user giv:en variables for training exist / are in the correct format
-def check_trainingfiles(normexpr, labelinfo, metadata, rejection_cutoff):
+def check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cutoff):
     passed = True
-    if not os.path.exists(normexpr):
+    if not os.path.exists(train_normexpr):
         print('Given normalized expression data file does not exist')
         passed = False
     if not os.path.exists(labelinfo):
         print('Given label info file does not exist')
         passed = False
-    if not os.path.exists(metadata):
+    if not os.path.exists(train_metadata):
         print('Given metadata file does not exist')
         passed = False
     if rejection_cutoff > 1 or rejection_cutoff < 0:
@@ -220,9 +223,10 @@ class Layer:
             return_str += 'Per-Class ROC Curves: ' + self.roc[1] + '\n'
             return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
             return_str += 'Precision-Recall Graph (10%, no rejection): ' + self.pr + '\n'
-            return_str += 'Overall Feature Ranking: ' + self.fr[0] + '\n'
-            for i in range(len(self.fr)-1):
-                return_str += self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.fr[i+1] + '\n'
+            if self.fr != []:
+                return_str += 'Overall Feature Ranking: ' + self.fr[0] + '\n'
+                for i in range(len(self.fr)-1):
+                    return_str += self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.fr[i+1] + '\n'
         return return_str
     
     
@@ -306,7 +310,7 @@ class Layer:
         Y = labels.values
         np.random.seed(0)
         X, Y = shuffle(X, Y)
-        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)
+        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)#, stratify=Y)
         test_cellnames = Y_test[:,0]
         test_cellnames = test_cellnames.ravel()
 
@@ -315,7 +319,7 @@ class Layer:
         Y = labels[labelcolumn].values
         np.random.seed(0)
         X, Y = shuffle(X, Y)
-        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)
+        X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True)#, stratify=Y)
         print('Training Samples: ' + str(len(X_tr)) + ', Testing Samples: ' + str(len(X_test)))
         return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames;
     
@@ -716,10 +720,10 @@ class Layer:
     #               otherwise same length as subsetcriteria and corresponds to each subsetcriterium
     # labeldicts and rejectcutoffs should be set to [None] if conducting regression
     # When training a layer with subsetcriteria, new pkl and csv files are created for each subsetcriterium
-    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, shap_on):
+    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on):
         X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
         temp_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
-        if shap_on is True:
+        if featrank_on is True:
             self.feature_ranking(temp_model, normexprpkl, metadatacsv, testsplit)
     
     
@@ -751,13 +755,13 @@ def export_layers(all_layers):
             pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
-def training(normexpr, labelinfo, metadata, testsplit, rejection_cutoff, shap_on):
+def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on):
     global path
     path = os.path.join(path, 'training')
     os.mkdir(path)
     os.chdir(path)
-    csv2pkl(normexpr)
-    normexpr = normexpr[:-3] + 'pkl'
+    csv2pkl(train_normexpr)
+    train_normexpr = train_normexpr[:-3] + 'pkl'
     all_layers = [Layer('Root', 0)]
     construct_tree(labelinfo, all_layers)
     print(all_layers)
@@ -767,11 +771,11 @@ def training(normexpr, labelinfo, metadata, testsplit, rejection_cutoff, shap_on
         os.chdir(path)
         path = path + '/'
         if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(2, testsplit, normexpr, metadata)
+            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
             parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 7, 'subsample': 0.6,
                           'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
             print(parameters)
-        layer.train_layer(normexpr, metadata, parameters, testsplit, [0, rejection_cutoff], shap_on)
+        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on)
         os.chdir('..') # return to training directory
         path = os.getcwd()
     path = path + '/'
@@ -898,55 +902,88 @@ def main():
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
     
-    # args = sys.argv[1:]
-    # print(args)
     
     global path, rejection_cutoff
     path = os.getcwd()
-    user_train = True
-    user_predict = True
-    normexpr = '/Users/sidraxu/Downloads/asdf/cui_normexpr.csv'
-    labelinfo = '/Users/sidraxu/Downloads/asdf/cui_labelinfo.csv'
-    metadata = '/Users/sidraxu/Downloads/asdf/cui_metadata.csv'
-    testsplit = 0.1
-    shap_on = True
-    rejection_cutoff = 0.5
-    val_normexpr = '/Users/sidraxu/Downloads/asdf/lmna_normexpr.csv'
-    val_metadata = None # '/Users/sidraxu/Downloads/asdf/pbmc_metadata.csv'
-    layer_paths = ['/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Root_object.pkl',
-                   '/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Cardiomyocytes_object.pkl',
-                   '/Users/sidraxu/Documents/GitHub/CellPy/cellpy/training/Ventricular CM_object.pkl']
+    user_train = False
+    user_predict = False
+    train_normexpr = None
+    labelinfo = None
+    train_metadata = None
+    testsplit = None
+    featrank_on = None
+    rejection_cutoff = None
+    pred_normexpr = None
+    pred_metadata = None
+    layer_paths = None
     
-    passed_options = check_combinations(user_train, user_predict, normexpr, labelinfo, metadata, testsplit,
-                                        shap_on, rejection_cutoff, val_normexpr, val_metadata, layer_paths)
+    args = sys.argv[1:]
+    options, args = getopt.getopt(args, '',
+                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=',
+                         'featureRanking=', 'rejectionCutoff=', 'predNormExpr=', 'predMetadata=', 'layerObjectPath='])
+    for name, value in options:
+        if name in ['--runMode']:
+            if value == 'trainOnly':
+                user_train = True
+            elif value == 'predictOnly':
+                user_predict = True
+            elif value == 'trainAndPredict':
+                user_train = True
+                user_predict = True
+        if name in ['--trainNormExpr']:
+            train_normexpr = value
+        if name in ['--labelInfo']:
+            labelinfo = value
+        if name in ['--trainMetadata']:
+            train_metadata = value
+        if name in ['--testSplit']:
+            testsplit = float(value)
+        if name in ['--featureRanking']:
+            if value == 'on':
+                featrank_on = True
+            elif value == 'off':
+                featrank_on = False
+        if name in ['--rejectionCutoff']:
+            rejection_cutoff = float(value)
+        if name in ['--predNormExpr']:
+            pred_normexpr = value
+        if name in ['--predMetadata']:
+            pred_metadata = value
+        if name in ['--layerObjectPath']:
+            if layer_paths is None:
+                layer_paths = [value]
+            else:
+                layer_paths.append(value)
+    
+    passed_options = check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit,
+                                        featrank_on, rejection_cutoff, pred_normexpr, pred_metadata, layer_paths)
     if passed_options is False:
         return
     
-    path = os.path.join(path, 'cellpy')
+    path = os.path.join(path, 'cellpy_results')
     if not os.path.isdir(path):
-        print('Creating directory "cellpy" in cwdir ' + path)
+        print('Created directory "cellpy_results" in cwdir ' + path)
         os.mkdir(path)
     os.chdir(path)
     
     # If training option is called
     if user_train is True:
-        passed_train = check_trainingfiles(normexpr, labelinfo, metadata, rejection_cutoff)
+        passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cutoff)
         if passed_train is True:
-            all_layers = training(normexpr, labelinfo, metadata, testsplit, rejection_cutoff, shap_on)
+            all_layers = training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on)
     
     # If prediction option is called
     if user_predict is True:
-        passed_predict = check_predictionfiles(val_normexpr, val_metadata, layer_paths)
+        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths)
         if passed_predict is True:
-            # directly from training option
-            if passed_train is True:
-                prediction(val_normexpr, val_metadata, all_layers=all_layers)
+            # if training option was called by user and passed check
+            if user_train is True and passed_train is True:
+                prediction(pred_normexpr, pred_metadata, all_layers=all_layers)
             # user inputs list of Layer objects
             elif layer_paths is not None:
-                prediction(val_normexpr, val_metadata, object_paths=layer_paths)
+                prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
 
     # TO-DO: validation summary file, merge feature ranking and xgbmodel together?, feature_names global?
-    # command line conversion w/ all possible input options
 
 
 if __name__ == "__main__":
