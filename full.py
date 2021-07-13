@@ -793,22 +793,22 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
 def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
     passed = True
     if not os.path.exists(val_normexpr):
-        print('Given validation normalized expression data file does not exist')
+        print('ERROR: Given validation normalized expression data file does not exist')
         passed = False
     if val_metadata != None and not os.path.exists(val_metadata):
-        print('Given validation metadata file does not exist')
+        print('ERROR: Given validation metadata file does not exist')
         passed = False
     # check all layer paths are objects and contain a trained xgb model
     if layer_paths != None:
         for i in range(len(layer_paths)):
             layer_path = layer_paths[i]
             if not os.path.exists(layer_path):
-                print('Given Layer object ' + str(i) + ' does not exist')
+                print('ERROR: Given Layer object ' + str(i) + ' does not exist')
                 passed = False
             else:
                 layer = pd.read_pickle(layer_path)
                 if layer.trained() is False:
-                    print('Given Layer object ' + str(i) + ' is not trained')
+                    print('ERROR: Given Layer object ' + str(i) + ' is not trained')
                     passed = False
     return passed
 
