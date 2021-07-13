@@ -92,16 +92,16 @@ def check_combinations(user_train, user_predict, train_normexpr, labelinfo, trai
 def check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cutoff):
     passed = True
     if not os.path.exists(train_normexpr):
-        print('Given normalized expression data file does not exist')
+        print('ERROR: Given normalized expression data file does not exist')
         passed = False
     if not os.path.exists(labelinfo):
-        print('Given label info file does not exist')
+        print('ERROR: Given label info file does not exist')
         passed = False
     if not os.path.exists(train_metadata):
-        print('Given metadata file does not exist')
+        print('ERROR: Given metadata file does not exist')
         passed = False
     if rejection_cutoff > 1 or rejection_cutoff < 0:
-        print('Given rejection cutoff must be a value between 0 and 1')
+        print('ERROR: Given rejection cutoff must be a value between 0 and 1')
         passed = False
     return passed
 
