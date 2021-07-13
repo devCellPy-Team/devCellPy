@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import time
+import resource 
+
 import sys
 import getopt
 import os
+import datetime
 import csv
 import pickle
 import numpy as np
@@ -772,8 +776,6 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         path = path + '/'
         if layer.name == 'Root': # root top layer
             parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
-            parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 7, 'subsample': 0.6,
-                          'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
             print(parameters)
         layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on)
         os.chdir('..') # return to training directory
@@ -901,6 +903,7 @@ def main():
     #           (path, layer_paths, rejection_cutoff, val_normexpr, val_metdata)
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
+    time_start = time.perf_counter()
         
     global path, rejection_cutoff
     path = os.getcwd()
@@ -959,7 +962,8 @@ def main():
     if passed_options is False:
         return
     
-    path = os.path.join(path, 'cellpy_results')
+    newdir = 'cellpy_results' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    path = os.path.join(path, newdir)
     if not os.path.isdir(path):
         print('Created directory "cellpy_results" in cwdir: ' + path)
         os.mkdir(path)
@@ -984,6 +988,9 @@ def main():
 
     # TO-DO: garbage collector, check file content!
     # Figure out why computational power so much higher
+    time_elapsed = (time.perf_counter() - time_start)
+    memMb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024.0/1024.0
+    print ("%5.1f secs %5.1f MByte" % (time_elapsed,memMb))
 
 
 if __name__ == "__main__":
