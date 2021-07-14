@@ -962,7 +962,7 @@ def main():
     passed_options = check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit,
                                         featrank_on, rejection_cutoff, pred_normexpr, pred_metadata, layer_paths)
     if passed_options is False:
-        return
+        raise ValueError('see printed error log above')
     
     # Create cellpy_results directory with timestamp
     newdir = 'cellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
@@ -972,22 +972,28 @@ def main():
         os.mkdir(path)
     os.chdir(path)
     
-    # If training option is called
+    # Check training files exist if training option called
+    passed_train = None
+    passed_predict = None
     if user_train is True:
         passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
-        if passed_train is True:
-            all_layers = training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on)
-    
-    # If prediction option is called
+    # Check prediction files exist if prediction option called
     if user_predict is True:
-        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths)
-        if passed_predict is True:
-            # if training option was called by user and passed check
-            if user_train is True and passed_train is True:
-                prediction(pred_normexpr, pred_metadata, all_layers=all_layers)
-            # user inputs list of Layer objects
-            elif layer_paths is not None:
-                prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
+        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths) 
+    if passed_train is False or passed_predict is False:
+        raise ValueError('see printed error log above')
+        
+    # If training option is called and feasible
+    if user_train is True and passed_train is True:
+        all_layers = training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on)
+    # If prediction option is called and feasible
+    if user_predict is True and passed_predict is True:
+        # if training option was called by user and passed check
+        if user_train is True and passed_train is True:
+            prediction(pred_normexpr, pred_metadata, all_layers=all_layers)
+        # user inputs list of Layer objects
+        elif layer_paths is not None:
+            prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
 
     # Print computational time and memory required
     time_elapsed = (time.perf_counter() - time_start)
