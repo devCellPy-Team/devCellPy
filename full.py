@@ -3,7 +3,6 @@
 
 import time
 import resource 
-
 import sys
 import getopt
 import os
@@ -28,9 +27,9 @@ from sklearn.metrics import average_precision_score
 import shap
 
 
-# Ensures given files satisfy one of the given options
-# Certain files must appear together for training and/or validation
+# Ensures given files satisfy one of the possible pathways provided by cellpy
 # Ensures user input for train or predict matches file inputs
+# Certain files must appear together for training and/or validation to proceed
 def check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit, featrank_on,
                        rejection_cutoff, val_normexpr, val_metadata, layer_paths):
     cellpy_train = False
@@ -65,7 +64,7 @@ def check_combinations(user_train, user_predict, train_normexpr, labelinfo, trai
             passed = False
     
     predict_list = [val_normexpr, val_metadata, layer_paths]
-    # if the user selected predict or provided predict variables
+    # if the user selected the 'predict' option or provided predict variables
     if (user_predict is True) or (predict_list.count(None) != len(predict_list)):
         if val_metadata is not None:
             print('Prediction option with accuracy calculation selected')
@@ -88,8 +87,9 @@ def check_combinations(user_train, user_predict, train_normexpr, labelinfo, trai
     return passed
 
 
-# Ensures all the user giv:en variables for training exist / are in the correct format
-def check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cutoff):
+
+# Ensures all the user given variables for training exist or are in bounds
+def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
     passed = True
     if not os.path.exists(train_normexpr):
         print('ERROR: Given normalized expression data file does not exist')
@@ -100,10 +100,46 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cut
     if not os.path.exists(train_metadata):
         print('ERROR: Given metadata file does not exist')
         passed = False
+    if testsplit > 1 or testsplit < 0:
+        print('ERROR: Given test split percentage must be a value between 0 and 1')
+        passed = False
     if rejection_cutoff > 1 or rejection_cutoff < 0:
         print('ERROR: Given rejection cutoff must be a value between 0 and 1')
         passed = False
     return passed
+
+
+# Conducts training in all layers separated into different folders by name
+# Creates directory 'training' in cellpy_results folder, defines 'Root' as topmost layer
+# Conducts finetuning on Root layer with 50 iterations
+def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on):
+    global path
+    path = os.path.join(path, 'training')
+    os.mkdir(path)
+    os.chdir(path)
+    csv2pkl(train_normexpr)
+    train_normexpr = train_normexpr[:-3] + 'pkl'
+    all_layers = [Layer('Root', 0)]
+    construct_tree(labelinfo, all_layers)
+    print(all_layers)
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
+        if layer.name == 'Root': # root top layer
+            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+            print(parameters)
+        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on)
+        os.chdir('..') # return to training directory
+        path = os.getcwd()
+    path = path + '/'
+    training_summary(all_layers)
+    export_layers(all_layers)
+    print('Training Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+    return all_layers
 
 
 # Converts the normalized expression csv into a pkl
@@ -119,12 +155,11 @@ def csv2pkl(csvpath):
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
 
 
-# Utility function, searches all_layers for a layer with the given name
-def find_layer(all_layers, name):
-    for layer in all_layers:
-        if layer.name == name:
-            return layer
-    return None
+# Constructs a list of all Layer objects from a labelinfo file
+# Initalizes each Layer object with a name, level #, and label dictionary
+def construct_tree(labelinfo, all_layers):
+    labeldata = fill_data(labelinfo)
+    fill_dict(labeldata, all_layers)
 
 
 # Function of construct_tree, fills the vertical columns of the labeldata file
@@ -145,7 +180,7 @@ def fill_data(labelinfo):
 def fill_dict(labeldata, all_layers):
     for i in range(len(labeldata)):
         # Fills the root dictionary
-        if find_layer(all_layers, labeldata[i][0]) is None: # IS THIS CONDITIONAL NECESSARY?
+        if find_layer(all_layers, labeldata[i][0]) is None:
             root_layer = find_layer(all_layers, 'Root')
             root_layer.add_dictentry(labeldata[i][0])
         # Fills dictionaries in other layers given the existence of a leaf
@@ -157,13 +192,136 @@ def fill_dict(labeldata, all_layers):
                 prev_layer.add_dictentry(labeldata[i][j])
             else:
                 break
-            
 
-# Constructs a list of all Layer objects from a labelinfo file
-# Initalizes each Layer object with a name, level #, and label dictionary
-def construct_tree(labelinfo, all_layers):
-    labeldata = fill_data(labelinfo)
-    fill_dict(labeldata, all_layers)
+
+# Utility function of fill_dict, searches all_layers for a layer with the given name
+def find_layer(all_layers, name):
+    for layer in all_layers:
+        if layer.name == name:
+            return layer
+    return None
+
+
+# Summarizes and lists the path names of all the files created during training
+# Prints the summary of each Layer object
+def training_summary(all_layers):
+    f = open(path + 'training_summaryfile.txt', 'w')
+    for layer in all_layers:
+        f.write(str(layer))
+        f.write('\n')
+
+
+# Exports all the trained Layers as pickle files
+def export_layers(all_layers):
+    for layer in all_layers:
+        with open(path + layer.name + '_object.pkl', 'wb') as output:
+            pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
+
+
+
+# Ensures all the user given variables for validation exist / are in the correct format
+def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
+    passed = True
+    if not os.path.exists(val_normexpr):
+        print('ERROR: Given validation normalized expression data file does not exist')
+        passed = False
+    if val_metadata != None and not os.path.exists(val_metadata):
+        print('ERROR: Given validation metadata file does not exist')
+        passed = False
+    # check all layer paths are objects and contain a trained xgb model
+    if layer_paths != None:
+        for i in range(len(layer_paths)):
+            layer_path = layer_paths[i]
+            if not os.path.exists(layer_path):
+                print('ERROR: Given Layer object ' + str(i) + ' does not exist')
+                passed = False
+            else:
+                layer = pd.read_pickle(layer_path)
+                if layer.trained() is False:
+                    print('ERROR: Given Layer object ' + str(i) + ' is not trained')
+                    passed = False
+    return passed
+
+
+# Conducts prediction in all layers separated into different folders by name
+# Creates directory 'prediction' in cellpy_results folder, defines 'Root' as topmost layer
+def prediction(val_normexpr, val_metadata, all_layers=None, object_paths=None):
+    if object_paths != None:
+        all_layers = import_layers(object_paths)
+    global path
+    path = os.path.join(path, 'prediction')
+    os.mkdir(path)
+    os.chdir(path)
+    featurenames = all_layers[0].xgbmodel.feature_names
+    reorder_pickle(val_normexpr, featurenames)
+    val_normexpr = val_normexpr[:-3] + 'pkl'
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
+        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+        os.chdir('..') # return to prediction directory
+        path = os.getcwd()
+    print('Validation Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+
+
+# Imports Layer objects from a list of given paths
+def import_layers(layer_paths):
+    layers = []
+    for layer_path in layer_paths:
+         layer = pd.read_pickle(layer_path)
+         layers.append(layer)
+    return layers
+
+
+# Converts the normalized expression csv into a pkl
+# Expression CSV file must contain genes as row names, samples as column names
+# First column name (cell A1) is 'gene'
+# Reorders the csv file to match the features in a given featurenames list
+# Returns path to the new pkl file
+def reorder_pickle(csvpath, featurenames):
+    tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
+    norm_express = pd.concat(tp, ignore_index=True)
+    print (norm_express.head())
+    norm_express.set_index('gene', inplace=True)
+    norm_express.index.names = [None]
+    norm_express = norm_express.T
+    print(norm_express.T.duplicated().any())
+    print ('Training Data # of  genes: ' + str(len(featurenames)))
+    # Manually reorder columns according to atlas index
+    origfeat = list(norm_express)
+    print ('Validation Data # of genes: ' + str(len(origfeat)))
+    newindex = []
+    for i in range(len(featurenames)):
+        if featurenames[i] in origfeat:
+            newindex.append(featurenames[i])
+    print ('Overlapping # of genes: ' + str(len(newindex)))
+    norm_express = norm_express.reindex(columns=newindex)
+    # Add missing features, remove extra features to match atlas
+    i = 0
+    missing_counter = 0
+    while i < len(list(norm_express)):
+        if list(norm_express)[i] != featurenames[i]:
+            # this block does not run, reindexing removes new genes already
+            if list(norm_express)[i] not in featurenames:
+                print ('Deleted gene: ' + list(norm_express)[i])
+                del norm_express[list(norm_express)[i]]
+                i -= 1
+            else:
+                norm_express.insert(i, featurenames[i], None)
+                missing_counter += 1
+        i += 1
+    while i < len(featurenames):
+        norm_express.insert(i, featurenames[i], None)
+        i += 1
+        missing_counter += 1
+    # overlapping + missing = atlas total
+    print ('Missing # of genes: ' + str(missing_counter))
+    norm_express.to_pickle(csvpath[:-3] + 'pkl')
+
 
 
 # Object for each layer of the model
@@ -200,12 +358,6 @@ class Layer:
     def __eq__(self, layer2):
         return self.name==layer2.name
     
-    def finetuned(self):
-        return self.finetuning is not None
-    
-    def trained(self):
-        return self.xgbmodel is not None
-    
     def __repr__(self):
         return "<Layer: '%s', Level: %s, labeldict: %s, Trained: %s>" % (self.name, self.level, self.labeldict, self.trained())
     
@@ -233,13 +385,141 @@ class Layer:
                     return_str += self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.fr[i+1] + '\n'
         return return_str
     
+    def finetuned(self):
+        return self.finetuning is not None
+    
+    def trained(self):
+        return self.xgbmodel is not None
     
     # Adds a value to the label dictionary if it is not already present
+    # Utility function of fill_dict
     def add_dictentry(self, value):
         curr_dict = self.labeldict
         if value not in list(curr_dict.values()):
             curr_dict[len(curr_dict)] = value
             self.labeldict = curr_dict
+
+
+    # Hyperparameter tuning for XGBoost using accuracy
+    # Equivalent to sklearn.model_selection.RandomizedSearchCV -- w/o cv and w/ triangular dist
+    # Parameters: eta, max_depth, subsamaple, colsample_bytree
+    # n randomized trials: triangular distribution around the default or recommended xgboost value
+    #                      rounded to a reasonable decimal place
+    # Splits data according to user-provided testplit value, NO cross validation conducted
+    # Returns parameters with lowest mean absolute error (mae) on 10% for actual training
+    # Outputs csv file with accuracy of each class and mae for all trials, does not output any other metrics
+    def finetune(self, trials, testsplit, normexprpkl, metadatacsv):
+        X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, testsplit)
+        min_mae = 100000000000000
+        for i in range(trials):
+            eta_temp = round(random.triangular(0,1,0.3),1)
+            max_depth_temp = round(random.triangular(4,8,6))
+            subsample_temp = round(random.triangular(0.01,1,0.5),1)
+            colsample_bytree_temp = round(random.triangular(0.01,1,0.5),1)
+            params = {'objective': 'multi:softprob', 'eta': eta_temp, 'max_depth': max_depth_temp, 'subsample': subsample_temp,
+                    'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
+    
+            mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
+            f = open(path + self.name + '_finetuning.csv', 'a+')
+            f.write(str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ',')
+            f.write(output_string + '\n')
+            if mae < min_mae:
+                min_mae = mae
+                final_params = params
+        print(final_params)
+        self.finetuning = self.name + '_finetuning.csv'
+        return final_params
+
+    # XGBoost w/o cross validation, no output files, just accuracy score on user-provided testsplit value
+    # Returns mean absolute error (mae) as float and csv output string
+    #       Accuracy for each class and mae in a comma-separated string for classification
+    # Only for finetuning!
+    def xgboost_model_shortver(self, X_tr, X_test, Y_tr, Y_test, params):
+        params['num_class'] = len(self.labeldict)
+    
+        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
+        model = xgb.train(params, d_tr, 20, verbose_eval=10)
+        d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
+        probabilities_xgb = model.predict(d_test)
+    
+        returned_str = ''
+        predictions_xgb = probabilities_xgb.argmax(axis=1)
+        cm = confusion_matrix(Y_test, predictions_xgb)
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        mae = 1-sum(cm.diagonal())/len(cm.diagonal())
+        returned_str = ','.join(map(str, cm.diagonal())) + ',' + str(mae)
+        return mae, returned_str
+    
+    
+    
+    # Trains one layer in the classification
+    # Conducts feature ranking with SHAP if instructed by user
+    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on):
+        X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
+        temp_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
+        if featrank_on is True:
+            self.feature_ranking(temp_model, normexprpkl, metadatacsv, testsplit)
+    
+    
+    # Trains XGBoost for a layer of classification given parameters
+    # Splits data according to user-provided testsplit
+    # Conducts 10-fold cross validation on (1-testsplit)% of data, outputs cv metrics
+    # Retrains model on (1-testsplit)% to output metrics when tested on holdout (testsplit)%
+    # Retrains final saved model on 100% of data
+    # Returns temporary model trained on (1-testsplit)% for feature ranking calculations
+    def xgboost_model(self, X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs):
+        params['num_class'] = len(self.labeldict)
+    
+        # 10-fold CV on the 90%
+        kfold = 10
+        sss = StratifiedShuffleSplit(n_splits=kfold, test_size=0.1, random_state=720)
+        for i, (train_index, test_index) in enumerate(sss.split(X_tr, Y_tr)):
+            print('[Fold %d/%d]' % (i + 1, kfold))
+            X_train, X_valid = X_tr[train_index], X_tr[test_index]
+            Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
+            d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
+            cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
+            self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
+            self.model_metrics('cv', X_valid, Y_valid)
+            self.cvmetrics = self.name + '_cvmetrics.txt'
+    
+        # 90% model, 10% testing
+        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
+        temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
+        self.xgbmodel = temp_model # temporarily set xgbmodel to (1-testsplit)% model
+        self.model_metrics('final', X_test, Y_test)
+        self.finalmetrics = self.name + '_finalmetrics.txt'
+        self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
+        for cutoff in rejectcutoffs:
+            self.predictions.append(self.name + '_trainingpredictions_reject' + str(cutoff) + '.csv')
+        self.cfsn_mtx('training', X_test, Y_test)
+        self.cfm = self.name + '_confusionmatrix.svg'
+        self.roc_curves(X_test, Y_test)
+        self.roc.append(self.name + '_miacroroc.svg')
+        self.roc.append(self.name + '_classroc.svg')
+        self.roc.append(self.name + '_allroc.svg')
+        self.pr_curves(X_test, Y_test)
+        self.pr = self.name + '_allpr.svg'
+    
+        # final 100% model
+        d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
+        final_model = xgb.train(params, d_all, 20, verbose_eval=500)
+        pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
+        self.xgbmodel = final_model
+        
+        return temp_model # for feature ranking calculation
+    
+    
+    # Outputs predictions of the 90% model on the 10% test set in a given dataset
+    # 1 csv file outputted for each rejection cutoff in the list rejectioncutoffs
+    # A cutoff of 0.5 means the probability of the label must be >=0.5 for a prediction to be called
+    # A cutoff of 0 is equivalent to no rejection option
+    def predict_layer(self, rejectcutoffs, normexprpkl, metadatacsv=None):
+        X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv) # Y will be None if metadatacsv=None
+        self.cell_predictions('validation', rejectcutoffs, all_cellnames, X, Y) # can handle Y=None
+        if metadatacsv != None:
+            self.cfsn_mtx('validation', X, Y)
+            self.model_metrics('validation', X, Y)
 
 
     # Reads the normalized gene expression data into a norm_expr dataframe
@@ -326,75 +606,6 @@ class Layer:
         X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True, stratify = Y)
         print('Training Samples: ' + str(len(X_tr)) + ', Testing Samples: ' + str(len(X_test)))
         return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames;
-    
-    
-    # XGBoost w/o cross validation, no output files, just accuracy score on 10%
-    # Returns mean absolute error (mae) as float and csv output string
-    #       Accuracy for each class and mae in a comma-separated string for classification
-    #       Only mae in a string for regression
-    # For finetune(..) function below
-    def xgboost_model_shortver(self, X_tr, X_test, Y_tr, Y_test, params):
-        params['num_class'] = len(self.labeldict)
-    
-        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
-        model = xgb.train(params, d_tr, 20, verbose_eval=10)
-        d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
-        probabilities_xgb = model.predict(d_test)
-    
-        returned_str = ''
-        predictions_xgb = probabilities_xgb.argmax(axis=1)
-        cm = confusion_matrix(Y_test, predictions_xgb)
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        mae = 1-sum(cm.diagonal())/len(cm.diagonal())
-        returned_str = ','.join(map(str, cm.diagonal())) + ',' + str(mae)
-        return mae, returned_str
-    
-    
-    # Hyperparameter tuning for XGBoost using accuracy
-    # Equivalent to sklearn.model_selection.RandomizedSearchCV -- w/o cv and w/ triangular dist
-    # Parameters: eta, max_depth, subsamaple, colsample_bytree
-    # n randomized trials: triangular distribution around the default or recommended xgboost value
-    #                      rounded to a reasonable decimal place
-    # Splits data 90/10, NO cross validation conducted
-    # Returns parameters with lowest mean absolute error (mae) on 10% for actual training
-    # Outputs csv file with accuracy of each class and mae for all trials, does not output any other metrics
-    def finetune(self, trials, testsplit, normexprpkl, metadatacsv):
-        X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, testsplit)
-        min_mae = 100000000000000
-        for i in range(trials):
-            eta_temp = round(random.triangular(0,1,0.3),1)
-            max_depth_temp = round(random.triangular(4,8,6))
-            subsample_temp = round(random.triangular(0.01,1,0.5),1)
-            colsample_bytree_temp = round(random.triangular(0.01,1,0.5),1)
-            # hard code optimal values for classification and regression determined from preliminary tests
-            if i == 0:
-               eta_temp = 0.3
-               max_depth_temp = 6
-               subsample_temp = 0.9
-               colsample_bytree_temp = 0.5
-            if i == 1:
-               eta_temp = 0.2
-               max_depth_temp = 7
-               subsample_temp = 0.7
-               colsample_bytree_temp = 0.5
-            if i == 2:
-               eta_temp = 0.2
-               max_depth_temp = 7
-               subsample_temp = 0.6
-               colsample_bytree_temp = 0.5
-            params = {'objective': 'multi:softprob', 'eta': eta_temp, 'max_depth': max_depth_temp, 'subsample': subsample_temp,
-                    'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
-    
-            mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
-            f = open(path + self.name + '_finetuning.csv', 'a+')
-            f.write(str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ',')
-            f.write(output_string + '\n')
-            if mae < min_mae:
-                min_mae = mae
-                final_params = params
-        print(final_params)
-        self.finetuning = self.name + '_finetuning.csv'
-        return final_params
     
     
     # Calculates metrics of the Layer model on a provided test set and outputs it in a file
@@ -625,53 +836,6 @@ class Layer:
         plt.legend(loc="lower left")
         plt.savefig(path + self.name + '_allpr.svg')
         plt.clf()
-    
-    
-    # Trains XGBoost for a layer of classification given parameters
-    # 90/10 data split, 10-fold cross validation on the 90%, outputs cv metrics
-    # Model retrained on 90%, outputs metrics when tested on holdout 10%
-    # Final saved model is retrained on 100%, but returns the temp model for feature ranking
-    def xgboost_model(self, X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs):
-        params['num_class'] = len(self.labeldict)
-    
-        # 10-fold CV on the 90%
-        kfold = 10
-        sss = StratifiedShuffleSplit(n_splits=kfold, test_size=0.1, random_state=720)
-        for i, (train_index, test_index) in enumerate(sss.split(X_tr, Y_tr)):
-            print('[Fold %d/%d]' % (i + 1, kfold))
-            X_train, X_valid = X_tr[train_index], X_tr[test_index]
-            Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
-            d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
-            cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
-            self.xgbmodel = cv_model # temporarily set xgbmodel to cv 81% model
-            self.model_metrics('cv', X_valid, Y_valid)
-            self.cvmetrics = self.name + '_cvmetrics.txt'
-    
-        # 90% model, 10% testing
-        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
-        temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
-        self.xgbmodel = temp_model # temporarily set xgbmodel to 90% model
-        self.model_metrics('final', X_test, Y_test)
-        self.finalmetrics = self.name + '_finalmetrics.txt'
-        self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
-        for cutoff in rejectcutoffs:
-            self.predictions.append(self.name + '_trainingpredictions_reject' + str(cutoff) + '.csv')
-        self.cfsn_mtx('training', X_test, Y_test)
-        self.cfm = self.name + '_confusionmatrix.svg'
-        self.roc_curves(X_test, Y_test)
-        self.roc.append(self.name + '_miacroroc.svg')
-        self.roc.append(self.name + '_classroc.svg')
-        self.roc.append(self.name + '_allroc.svg')
-        self.pr_curves(X_test, Y_test)
-        self.pr = self.name + '_allpr.svg'
-    
-        # final 100% model
-        d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
-        final_model = xgb.train(params, d_all, 20, verbose_eval=500)
-        pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
-        self.xgbmodel = final_model
-        
-        return temp_model # for feature ranking calculation
 
     
     # Outputs SHAP feature ranking plots overall AND for each class if conducting classification
@@ -715,184 +879,12 @@ class Layer:
             #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
             plt.clf()
             self.fr.append(self.name + '_class'+str(i)+'fr.svg')
-    
-    
-    # Trains 1 layer in the classification / regression
-    # subsetcolumn is a string used to identify the timepoint column for subsetted classification, set to None if not applicable
-    # subsetcriteria is a list of timepoint labels in subsetcolumn used for subsetted classification, set to None if not applicable
-    # labeldicts is a list of all dictionaries used for classification, should be length 1 if subsetcolumn is None,
-    #               otherwise same length as subsetcriteria and corresponds to each subsetcriterium
-    # labeldicts and rejectcutoffs should be set to [None] if conducting regression
-    # When training a layer with subsetcriteria, new pkl and csv files are created for each subsetcriterium
-    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on):
-        X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
-        temp_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
-        if featrank_on is True:
-            self.feature_ranking(temp_model, normexprpkl, metadatacsv, testsplit)
-    
-    
-    # Outputs predictions of the 90% model on the 10% test set in a given dataset
-    # 1 csv file outputted for each rejection cutoff in the list rejectioncutoffs
-    # A cutoff of 0.5 means the probability of the label must be >=0.5 for a prediction to be called
-    # A cutoff of 0 is equivalent to no rejection option
-    def predict_layer(self, rejectcutoffs, normexprpkl, metadatacsv=None):
-        X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv) # Y will be None if metadatacsv=None
-        self.cell_predictions('validation', rejectcutoffs, all_cellnames, X, Y) # can handle Y=None
-        if metadatacsv != None:
-            self.cfsn_mtx('validation', X, Y)
-            self.model_metrics('validation', X, Y)
 
 
-# Summarizes and lists the path names of all the files created during training
-# Prints the summary of each Layer object
-def training_summary(all_layers):
-    f = open(path + 'training_summaryfile.txt', 'w')
-    for layer in all_layers:
-        f.write(str(layer))
-        f.write('\n')
 
-
-# Exports all the trained Layers as pickle files
-def export_layers(all_layers):
-    for layer in all_layers:
-        with open(path + layer.name + '_object.pkl', 'wb') as output:
-            pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
-
-
-def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on):
-    global path
-    path = os.path.join(path, 'training')
-    os.mkdir(path)
-    os.chdir(path)
-    csv2pkl(train_normexpr)
-    train_normexpr = train_normexpr[:-3] + 'pkl'
-    all_layers = [Layer('Root', 0)]
-    construct_tree(labelinfo, all_layers)
-    print(all_layers)
-    for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
-        os.mkdir(path)
-        os.chdir(path)
-        path = path + '/'
-        if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
-            print(parameters)
-        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on)
-        os.chdir('..') # return to training directory
-        path = os.getcwd()
-    path = path + '/'
-    training_summary(all_layers)
-    export_layers(all_layers)
-    print('Training Complete')
-    os.chdir('..') # return to cellpy directory
-    path = os.getcwd()
-    return all_layers
-
-
-# Ensures all the user given variables for validation exist / are in the correct format
-def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
-    passed = True
-    if not os.path.exists(val_normexpr):
-        print('ERROR: Given validation normalized expression data file does not exist')
-        passed = False
-    if val_metadata != None and not os.path.exists(val_metadata):
-        print('ERROR: Given validation metadata file does not exist')
-        passed = False
-    # check all layer paths are objects and contain a trained xgb model
-    if layer_paths != None:
-        for i in range(len(layer_paths)):
-            layer_path = layer_paths[i]
-            if not os.path.exists(layer_path):
-                print('ERROR: Given Layer object ' + str(i) + ' does not exist')
-                passed = False
-            else:
-                layer = pd.read_pickle(layer_path)
-                if layer.trained() is False:
-                    print('ERROR: Given Layer object ' + str(i) + ' is not trained')
-                    passed = False
-    return passed
-
-
-# Imports Layer objects from a list of given paths
-def import_layers(layer_paths):
-    layers = []
-    for layer_path in layer_paths:
-         layer = pd.read_pickle(layer_path)
-         layers.append(layer)
-    return layers
-
-
-# Converts the normalized expression csv into a pkl
-# Expression CSV file must contain genes as row names, samples as column names
-# First column name (cell A1) is 'gene'
-# Reorders the csv file to match the features in a given featurenames list
-# Returns path to the new pkl file
-def reorder_pickle(csvpath, featurenames):
-    tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
-    norm_express = pd.concat(tp, ignore_index=True)
-    print (norm_express.head())
-    norm_express.set_index('gene', inplace=True)
-    norm_express.index.names = [None]
-    norm_express = norm_express.T
-    print(norm_express.T.duplicated().any())
-    print ('Training Data # of  genes: ' + str(len(featurenames)))
-    # Manually reorder columns according to atlas index
-    origfeat = list(norm_express)
-    print ('Validation Data # of genes: ' + str(len(origfeat)))
-    newindex = []
-    for i in range(len(featurenames)):
-        if featurenames[i] in origfeat:
-            newindex.append(featurenames[i])
-    print ('Overlapping # of genes: ' + str(len(newindex)))
-    norm_express = norm_express.reindex(columns=newindex)
-    # Add missing features, remove extra features to match atlas
-    i = 0
-    missing_counter = 0
-    while i < len(list(norm_express)):
-        if list(norm_express)[i] != featurenames[i]:
-            # this block does not run, reindexing removes new genes already
-            if list(norm_express)[i] not in featurenames:
-                print ('Deleted gene: ' + list(norm_express)[i])
-                del norm_express[list(norm_express)[i]]
-                i -= 1
-            else:
-                norm_express.insert(i, featurenames[i], None)
-                missing_counter += 1
-        i += 1
-    while i < len(featurenames):
-        norm_express.insert(i, featurenames[i], None)
-        i += 1
-        missing_counter += 1
-    # overlapping + missing = atlas total
-    print ('Missing # of genes: ' + str(missing_counter))
-    norm_express.to_pickle(csvpath[:-3] + 'pkl')
-
-
-def prediction(val_normexpr, val_metadata, all_layers=None, object_paths=None):
-    if object_paths != None:
-        all_layers = import_layers(object_paths)
-    global path
-    path = os.path.join(path, 'prediction')
-    os.mkdir(path)
-    os.chdir(path)
-    featurenames = all_layers[0].xgbmodel.feature_names
-    reorder_pickle(val_normexpr, featurenames)
-    val_normexpr = val_normexpr[:-3] + 'pkl'
-    for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
-        os.mkdir(path)
-        os.chdir(path)
-        path = path + '/'
-        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
-        os.chdir('..') # return to prediction directory
-        path = os.getcwd()
-    print('Validation Complete')
-    os.chdir('..') # return to cellpy directory
-    path = os.getcwd()
-
-
-# Main function, completes entire pipeline
+# Main function: reads in user input, selects a pathway, and trains / predicts
 def main():
+    ## CELLPY PATHWAYS
     # 1a. automatic everything: training and validation w/ val_metadata
     #           (path, normexpr, labelinfo, metadata, rejection_cutoff, val_normexpr, val_metadata)
     # 1b. automatic everything: training and validation w/o val_metadata
@@ -904,7 +896,8 @@ def main():
     # 3b. just validation: load in Layer objects and validation w/o val_metadata
     #           (path, layer_paths, rejection_cutoff, val_normexpr)
     time_start = time.perf_counter()
-        
+    
+    # All variables used for training and prediction set to None
     global path, rejection_cutoff
     path = os.getcwd()
     user_train = False
@@ -919,6 +912,14 @@ def main():
     pred_metadata = None
     layer_paths = None
     
+    # Command Line Interface
+    # runMode must be 'trainOnly', 'predictOnly', or 'trainAndPredict'
+    # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
+    # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
+    # featureRanking must be 'on' or 'off'
+    # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
+    # predNormExpr, predMetadata are paths to their respective prediction files
+    # layerObjectPath is a path to the Layer object that the user wants to predict on the predNormExpr
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
                         ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=',
@@ -957,12 +958,14 @@ def main():
             else:
                 layer_paths.append(value)
     
+    # Check user provided variables follow an above cellpy pathway
     passed_options = check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit,
                                         featrank_on, rejection_cutoff, pred_normexpr, pred_metadata, layer_paths)
     if passed_options is False:
         return
     
-    newdir = 'cellpy_results' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    # Create cellpy_results directory with timestamp
+    newdir = 'cellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
     path = os.path.join(path, newdir)
     if not os.path.isdir(path):
         print('Created directory "cellpy_results" in cwdir: ' + path)
@@ -971,7 +974,7 @@ def main():
     
     # If training option is called
     if user_train is True:
-        passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, rejection_cutoff)
+        passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
         if passed_train is True:
             all_layers = training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on)
     
@@ -986,8 +989,7 @@ def main():
             elif layer_paths is not None:
                 prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
 
-    # TO-DO: garbage collector, check file content!
-    # Figure out why computational power so much higher
+    # Print computational time and memory required
     time_elapsed = (time.perf_counter() - time_start)
     memMb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024.0/1024.0
     print ("%5.1f secs %5.1f MByte" % (time_elapsed,memMb))
