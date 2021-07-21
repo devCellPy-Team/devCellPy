@@ -5,8 +5,6 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=20GB
 #SBATCH --time=8:00:00
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=21sidrax@students.harker.org
 
 cd /home/groups/smwu/Sidra_FXG_Python/machine_learning_env/bin
 
@@ -16,6 +14,6 @@ source activate
 
 cd
 
-cd /scratch/groups/smwu/sidraxu/abcd
+cd /scratch/groups/smwu/sidraxu
 
-python /scratch/groups/smwu/sidraxu/abcd/full.py --runMode trainAndPredict --trainNormExpr /scratch/groups/smwu/sidraxu/abcd/cui_normexpr.csv --labelInfo /scratch/groups/smwu/sidraxu/abcd/cui_labelinfo.csv --trainMetadata /scratch/groups/smwu/sidraxu/abcd/cui_metadata.csv --testSplit 0.1 --featureRanking off --rejectionCutoff 0.5 --predNormExpr /scratch/groups/smwu/sidraxu/abcd/lmna_normexpr.csv
+python /Users/sidraxu/Documents/GitHub/CellPy/full.py --runMode trainAndPredict --trainNormExpr /Users/sidraxu/Downloads/CELLPY_TEST_PBMC_DATA/zheng_pbmc_2.5K.csv --labelInfo /Users/sidraxu/Downloads/zheng_labelinfo.csv --trainMetadata /Users/sidraxu/Downloads/CELLPY_TEST_PBMC_DATA/zheng_pbmc_2.5K_metadata.csv --testSplit 0.1 --featureRanking on --rejectionCutoff 0.5 --predNormExpr /Users/sidraxu/Downloads/CELLPY_TEST_PBMC_DATA/pbmc_10k_normalized.csv --predMetadata /Users/sidraxu/Downloads/CELLPY_TEST_PBMC_DATA/pbmc_10k_metadata.csv
