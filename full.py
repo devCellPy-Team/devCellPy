@@ -140,7 +140,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         os.chdir(path)
         path = path + '/'
         if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
             print(parameters)
         layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on, frsplit)
         os.chdir('..') # return to training directory
@@ -393,8 +393,9 @@ class Layer:
             return_str += 'Precision-Recall Graph (10%, no rejection): ' + self.pr + '\n'
             if self.fr != []:
                 return_str += 'Overall Feature Ranking: ' + self.fr[0] + '\n'
-                for i in range(len(self.fr)-1):
+                for i in range(len(self.fr)-2):
                     return_str += self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.fr[i+1] + '\n'
+                return_str += 'Full Feature Importance List: ' + self.fr[len(self.fr)-1] + '\n'
         return return_str
     
     def finetuned(self):
@@ -423,6 +424,12 @@ class Layer:
     def finetune(self, trials, testsplit, normexprpkl, metadatacsv):
         X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, testsplit)
         min_mae = 100000000000000
+        f = open(path + self.name + '_finetuning.csv', 'a+')
+        f.write('ETA,Max Depth,Subsample,Colsample by Tree,')
+        for i in range(len(self.labeldict)-1):
+            f.write(self.labeldict[i] + ' Accuracy')
+            f.write(',')
+        f.write('MAE\n')
         for i in range(trials):
             eta_temp = round(random.triangular(0,1,0.3),1)
             max_depth_temp = round(random.triangular(4,8,6))
@@ -432,8 +439,6 @@ class Layer:
                     'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
     
             mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
-            f = open(path + self.name + '_finetuning.csv', 'a+')
-            f.write('ETA,Max Depth,Subsample,Colsample by Tree,MAE\n')
             f.write(str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ',')
             f.write(output_string + '\n')
             if mae < min_mae:
@@ -469,16 +474,16 @@ class Layer:
     # Conducts feature ranking with SHAP if instructed by user on full final model
     def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on, frsplit):
         X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
-        self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
+        final_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
         if featrank_on is True:
-            self.feature_ranking(normexprpkl, metadatacsv, frsplit)
+            self.feature_ranking(final_model, normexprpkl, metadatacsv, frsplit)
     
     
     # Trains XGBoost for a layer of classification given parameters
     # Splits data according to user-provided testsplit
     # Conducts 10-fold cross validation on (1-testsplit)% of data, outputs cv metrics
     # Retrains model on (1-testsplit)% to output metrics when tested on holdout (testsplit)%
-    # Retrains final saved model on 100% of data
+    # Retrains final saved model on 100% of data, returns for feature ranking
     def xgboost_model(self, X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs):
         params['num_class'] = len(self.labeldict)
     
@@ -518,6 +523,10 @@ class Layer:
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
+        
+        # retrain 100% for feature ranking and to avoid python variable mutability
+        returned_model = xgb.train(params, d_all, 20, verbose_eval=500)
+        return returned_model
     
     
     # Outputs predictions of the 90% model on the 10% test set in a given dataset
@@ -654,8 +663,8 @@ class Layer:
             else:
                 f.write('Cell ID,Predicted Label')
             for j in range(len(self.labeldict)-1):
-                    f.write(',')
-                    f.write(self.labeldict[j] + ' Probability')
+                f.write(',')
+                f.write(self.labeldict[j] + ' Probability')
             f.write('\n')
             for i in range(test_cellnames.size):
                 f.write(test_cellnames[i])
@@ -859,7 +868,7 @@ class Layer:
     # Outputs SHAP feature ranking plots overall AND for each class if conducting classification
     # Uses same procedure for subsetting norm_expr as read_data(...) if column & criterium are provided
     # frsplit automatically set to 0.3 if not provided
-    def feature_ranking(self, normexprpkl, metadatacsv, frsplit):
+    def feature_ranking(self, model, normexprpkl, metadatacsv, frsplit):
         norm_express = pd.read_pickle(normexprpkl)
         tp = pd.read_csv(metadatacsv, iterator=True, chunksize=1000)
         labels = pd.concat(tp, ignore_index=True)
@@ -887,10 +896,9 @@ class Layer:
             frsplit = 0.3
         norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
     
-        final_model = self.xgbmodel
-        model_barr = final_model.save_raw()[4:]
-        final_model.save_raw = lambda: model_barr
-        shap_values = shap.TreeExplainer(final_model).shap_values(norm_express)
+        model_bytearray = model.save_raw()[4:]
+        model.save_raw = lambda: model_bytearray
+        shap_values = shap.TreeExplainer(model).shap_values(norm_express)
         shap.summary_plot(shap_values, norm_express, show=False)
         plt.tight_layout()
         plt.savefig(path + self.name + '_overallfr.svg')
@@ -905,11 +913,10 @@ class Layer:
             self.fr.append(self.name + '_class'+str(i)+'fr.svg')
         
         vals = np.abs(shap_values).mean(0)
-        feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['col_name','feature_importance_vals'])
-        feature_importance.sort_values(by=['feature_importance_vals'], ascending=False, inplace=True)
-        np.savetxt(path + self.name + '_shaplist.csv', feature_importance, delimiter=",")
-        print(feature_importance.head())
-
+        feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['Gene','Feature Importance Value'])
+        feature_importance.sort_values(by=['Feature Importance Value'], ascending=False, inplace=True)
+        feature_importance.to_csv(path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
+        self.fr.append(self.name + '_featureimportances.csv')
 
 
 # Main function: reads in user input, selects a pathway, and trains / predicts
