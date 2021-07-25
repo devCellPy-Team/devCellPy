@@ -57,8 +57,7 @@ def check_combinations(user_train, user_predict, train_normexpr, labelinfo, trai
             print('ERROR: Metadata file must be provided to resume')
             passed = False
         if train_list[3] is None:
-            print('ERROR: Test split amount must be provided to resume')
-            passed = False
+            print('WARNING: Test split amount not provided, training will proceed w/o cross-validation and metric calculations')
         if train_list[4] is None:
             print('ERROR: Feature ranking on/off must be provided to resume')
             passed = False
@@ -109,7 +108,7 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, re
     if not os.path.exists(train_metadata):
         print('ERROR: Given metadata file does not exist')
         passed = False
-    if testsplit > 1 or testsplit < 0:
+    if testsplit is not None and (testsplit > 1 or testsplit < 0):
         print('ERROR: Given test split percentage must be a value between 0 and 1')
         passed = False
     if rejection_cutoff > 1 or rejection_cutoff < 0:
@@ -382,15 +381,16 @@ class Layer:
             return_str += 'Finetuning Log: ' + self.finetuning + '\n'
         if self.trained():
             return_str += 'XGB Model: ' + self.name + '_xgbmodel.sav' + '\n'
-            return_str += '10-Fold Cross Validation Metrics: ' + self.cvmetrics + '\n'
-            return_str += 'Final Metrics (10%): ' + self.finalmetrics + '\n'
-            return_str += 'Predictions (no rejection): ' + self.predictions[0] + '\n'
-            return_str += 'Predictions (' + str(rejection_cutoff) + ' rejection cutoff): ' + self.predictions[1] + '\n'
-            return_str += 'Confusion Matrix (10%, no rejection): ' + self.cfm + '\n'
-            return_str += 'Micro/Macro ROC Curves: ' + self.roc[0] + '\n'
-            return_str += 'Per-Class ROC Curves: ' + self.roc[1] + '\n'
-            return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
-            return_str += 'Precision-Recall Graph (10%, no rejection): ' + self.pr + '\n'
+            if self.cvmetrics is not None:
+                return_str += '10-Fold Cross Validation Metrics: ' + self.cvmetrics + '\n'
+                return_str += 'Final Metrics (10%): ' + self.finalmetrics + '\n'
+                return_str += 'Predictions (no rejection): ' + self.predictions[0] + '\n'
+                return_str += 'Predictions (' + str(rejection_cutoff) + ' rejection cutoff): ' + self.predictions[1] + '\n'
+                return_str += 'Confusion Matrix (10%, no rejection): ' + self.cfm + '\n'
+                return_str += 'Micro/Macro ROC Curves: ' + self.roc[0] + '\n'
+                return_str += 'Per-Class ROC Curves: ' + self.roc[1] + '\n'
+                return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
+                return_str += 'Precision-Recall Graph (10%, no rejection): ' + self.pr + '\n'
             if self.fr != []:
                 return_str += 'Overall Feature Ranking: ' + self.fr[0] + '\n'
                 for i in range(len(self.fr)-2):
@@ -422,6 +422,9 @@ class Layer:
     # Returns parameters with lowest mean absolute error (mae) on 10% for actual training
     # Outputs csv file with accuracy of each class and mae for all trials, does not output any other metrics
     def finetune(self, trials, testsplit, normexprpkl, metadatacsv):
+        # If user skips cross validation, testsplit automatically set to 10% for finetuning
+        if testsplit is None:
+            testsplit = 0.1
         X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, testsplit)
         min_mae = 100000000000000
         f = open(path + self.name + '_finetuning.csv', 'a+')
@@ -469,64 +472,63 @@ class Layer:
         return mae, returned_str
     
     
-    
     # Trains one layer in the classification
-    # Conducts feature ranking with SHAP if instructed by user on full final model
-    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on, frsplit):
-        X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
-        final_model = self.xgboost_model(X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs)
-        if featrank_on is True:
-            self.feature_ranking(final_model, normexprpkl, metadatacsv, frsplit)
-    
-    
     # Trains XGBoost for a layer of classification given parameters
     # Splits data according to user-provided testsplit
     # Conducts 10-fold cross validation on (1-testsplit)% of data, outputs cv metrics
     # Retrains model on (1-testsplit)% to output metrics when tested on holdout (testsplit)%
     # Retrains final saved model on 100% of data, returns for feature ranking
-    def xgboost_model(self, X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames, params, rejectcutoffs):
+    # Conducts feature ranking with SHAP if instructed by user on full final model
+    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on, frsplit):
         params['num_class'] = len(self.labeldict)
     
-        # 10-fold CV on the 90%
-        kfold = 10
-        sss = StratifiedShuffleSplit(n_splits=kfold, test_size=0.1, random_state=720)
-        for i, (train_index, test_index) in enumerate(sss.split(X_tr, Y_tr)):
-            print('[Fold %d/%d]' % (i + 1, kfold))
-            X_train, X_valid = X_tr[train_index], X_tr[test_index]
-            Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
-            d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
-            cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
-            self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
-            self.model_metrics('cv', X_valid, Y_valid)
-            self.cvmetrics = self.name + '_cvmetrics.txt'
+        if testsplit is not None:
+            # 10-fold CV on (1-testsplit)% of data
+            X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
+            kfold = 10
+            sss = StratifiedShuffleSplit(n_splits=kfold, test_size=0.1, random_state=720)
+            for i, (train_index, test_index) in enumerate(sss.split(X_tr, Y_tr)):
+                print('[Fold %d/%d]' % (i + 1, kfold))
+                X_train, X_valid = X_tr[train_index], X_tr[test_index]
+                Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
+                d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
+                cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
+                self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
+                self.model_metrics('cv', X_valid, Y_valid)
+                self.cvmetrics = self.name + '_cvmetrics.txt'
+        
+            # 90% model, 10% testing
+            d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
+            temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
+            self.xgbmodel = temp_model # temporarily set xgbmodel to (1-testsplit)% model
+            self.model_metrics('final', X_test, Y_test)
+            self.finalmetrics = self.name + '_finalmetrics.txt'
+            self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
+            for cutoff in rejectcutoffs:
+                self.predictions.append(self.name + '_trainingpredictions_reject' + str(cutoff) + '.csv')
+            self.cfsn_mtx('training', X_test, Y_test)
+            self.cfm = self.name + '_confusionmatrix.svg'
+            self.roc_curves(X_test, Y_test)
+            self.roc.append(self.name + '_miacroroc.svg')
+            self.roc.append(self.name + '_classroc.svg')
+            self.roc.append(self.name + '_allroc.svg')
+            self.pr_curves(X_test, Y_test)
+            self.pr = self.name + '_allpr.svg'
     
-        # 90% model, 10% testing
-        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
-        temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
-        self.xgbmodel = temp_model # temporarily set xgbmodel to (1-testsplit)% model
-        self.model_metrics('final', X_test, Y_test)
-        self.finalmetrics = self.name + '_finalmetrics.txt'
-        self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
-        for cutoff in rejectcutoffs:
-            self.predictions.append(self.name + '_trainingpredictions_reject' + str(cutoff) + '.csv')
-        self.cfsn_mtx('training', X_test, Y_test)
-        self.cfm = self.name + '_confusionmatrix.svg'
-        self.roc_curves(X_test, Y_test)
-        self.roc.append(self.name + '_miacroroc.svg')
-        self.roc.append(self.name + '_classroc.svg')
-        self.roc.append(self.name + '_allroc.svg')
-        self.pr_curves(X_test, Y_test)
-        self.pr = self.name + '_allpr.svg'
-    
+        # skip cross validation and metric calculations
+        if testsplit is None:
+            X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv)
+        
         # final 100% model
         d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
         
-        # retrain 100% for feature ranking and to avoid python variable mutability
-        returned_model = xgb.train(params, d_all, 20, verbose_eval=500)
-        return returned_model
+        # retrain 100% for feature ranking and to avoid python variable mutability and lambda function errors
+        if featrank_on is True:
+            fr_model = xgb.train(params, d_all, 20, verbose_eval=500)
+            self.feature_ranking(fr_model, normexprpkl, metadatacsv, frsplit)
     
     
     # Outputs predictions of the 90% model on the 10% test set in a given dataset
@@ -585,7 +587,7 @@ class Layer:
             temp = labels.loc[labels[subsetcolumn] == subsetcriterium]
             labels = labels.reindex(index=temp.index)
             norm_express = norm_express.reindex(index=temp.index)
-        print (labels[labelcolumn].value_counts())
+        # print (labels[labelcolumn].value_counts())
         # Remove cells with labels not provided in the dictionary, replace present keys with values
         temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
         labels = labels.reindex(index=temp.index)
@@ -954,6 +956,7 @@ def main():
     # runMode must be 'trainOnly', 'predictOnly', or 'trainAndPredict'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
+    #           if not provided, cross validation is skipped
     # featureRanking must be 'on' or 'off'
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
     # predNormExpr, predMetadata are paths to their respective prediction files
