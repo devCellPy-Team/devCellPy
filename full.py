@@ -302,7 +302,9 @@ def reorder_pickle(csvpath, featurenames):
     norm_express = norm_express.T
     print(norm_express.T.duplicated().any())
     print ('Training Data # of  genes: ' + str(len(featurenames)))
-    # Manually reorder columns according to atlas index
+    
+    ## Manually reorder columns according to training data index
+    # Reorder overlapping genes, remove genes not in training data
     origfeat = list(norm_express)
     print ('Validation Data # of genes: ' + str(len(origfeat)))
     newindex = []
@@ -311,24 +313,23 @@ def reorder_pickle(csvpath, featurenames):
             newindex.append(featurenames[i])
     print ('Overlapping # of genes: ' + str(len(newindex)))
     norm_express = norm_express.reindex(columns=newindex)
-    # Add missing features, remove extra features to match atlas
-    i = 0
+    # Add missing genes
     missing_counter = 0
-    while i < len(list(norm_express)):
+    for i in range(len(featurenames)):
         if list(norm_express)[i] != featurenames[i]:
-            # this block does not run, reindexing removes new genes already
-            if list(norm_express)[i] not in featurenames:
-                print ('Deleted gene: ' + list(norm_express)[i])
-                del norm_express[list(norm_express)[i]]
-                i -= 1
-            else:
-                norm_express.insert(i, featurenames[i], None)
-                missing_counter += 1
-        i += 1
-    while i < len(featurenames):
-        norm_express.insert(i, featurenames[i], None)
-        i += 1
-        missing_counter += 1
+            norm_express.insert(i, featurenames[i], None)
+            missing_counter += 1
+    # i = 0
+    # missing_counter = 0
+    # while i < len(list(norm_express)):
+    #     if list(norm_express)[i] != featurenames[i]:
+    #         norm_express.insert(i, featurenames[i], None)
+    #         missing_counter += 1
+    #     i += 1
+    # while i < len(featurenames):
+    #     norm_express.insert(i, featurenames[i], None)
+    #     i += 1
+    #     missing_counter += 1
     # overlapping + missing = atlas total
     print ('Missing # of genes: ' + str(missing_counter))
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
@@ -896,7 +897,8 @@ class Layer:
         norm_express, labels = shuffle(norm_express, labels)
         if frsplit is None:
             frsplit = 0.3
-        norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
+        if frsplit != 1:
+            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
     
         model_bytearray = model.save_raw()[4:]
         model.save_raw = lambda: model_bytearray
@@ -952,7 +954,7 @@ def main():
     pred_metadata = None
     layer_paths = None
     
-    # Command Line Interface
+    ## Command Line Interface
     # runMode must be 'trainOnly', 'predictOnly', or 'trainAndPredict'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
@@ -988,7 +990,7 @@ def main():
             elif value == 'off':
                 featrank_on = False
         if name in ['--featureRankingSplit']:
-            frsplit = value
+            frsplit = float(value)
         if name in ['--rejectionCutoff']:
             rejection_cutoff = float(value)
         if name in ['--predNormExpr']:
