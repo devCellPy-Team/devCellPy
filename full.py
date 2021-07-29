@@ -30,23 +30,16 @@ import shap
 # Ensures given files satisfy one of the possible pathways provided by cellpy
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
-def check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit, featrank_on, frsplit,
-                       rejection_cutoff, val_normexpr, val_metadata, layer_paths):
-    cellpy_train = False
-    cellpy_predict = False
+def check_combinations(user_train, user_predict, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+                       rejection_cutoff, val_normexpr, val_metadata, layer_paths, frsplit):
     passed = True
     if user_train is None:
         print('ERROR: Run mode must be provided to resume')
-    train_list = [train_normexpr, labelinfo, train_metadata, testsplit, featrank_on, frsplit]
-    # if the user selected train or provided train variables
-    if (user_train is True) or (train_list.count(None) != len(train_list)):
+        
+    # if the user selected the 'trainOnly' option
+    train_list = [train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff]
+    if user_train is True:
         print('Training option selected')
-        train_list.append(rejection_cutoff)
-        if train_list.count(None) != len(train_list):
-            cellpy_train = True
-        if user_train is not cellpy_train:
-            print('ERROR: User selection for training option contradicts inputted files')
-            passed = False
         if train_list[0] is None:
             print('ERROR: Normalized expression matrix for training must be provided to resume')
             passed = False
@@ -54,59 +47,59 @@ def check_combinations(user_train, user_predict, train_normexpr, labelinfo, trai
             print('ERROR: Label information file must be provided to resume')
             passed = False
         if train_list[2] is None:
-            print('ERROR: Metadata file must be provided to resume')
+            print('ERROR: Metadata file for training must be provided to resume')
             passed = False
         if train_list[3] is None:
             print('WARNING: Test split amount not provided, training will proceed w/o cross-validation and metric calculations')
         if train_list[4] is None:
-            print('ERROR: Feature ranking on/off must be provided to resume')
-            passed = False
-        if train_list[5] is not None and train_list[4] is False:
-            print('ERROR: Feature ranking split provided but feature ranking off')
-            passed = False
-        if train_list[5] is None and train_list[4] is True:
-            print('WARNING: Feature ranking split not provided but feature ranking on, will be automatically set to 0.3')
-        if train_list[6] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
     
-    predict_list = [val_normexpr, val_metadata, layer_paths]
-    # if the user selected the 'predict' option or provided predict variables
-    if (user_predict is True) or (predict_list.count(None) != len(predict_list)):
+    # if the user selected the 'predictOnly' option
+    predict_list = [val_normexpr, val_metadata, layer_paths, rejection_cutoff]
+    if user_predict is True:
         if val_metadata is not None:
             print('Prediction option with accuracy calculation selected')
         else:
             print('Prediction option without accuracy calculation selected')
-        predict_list.append(rejection_cutoff)
-        if predict_list.count(None) != len(predict_list):
-            cellpy_predict = True
-        if user_predict is not cellpy_predict:
-            print('ERROR: User selection for prediction option contradicts inputted files')
-            passed = False
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
             passed = False
-        if predict_list[2] is None and len(train_list)<6: # if no objects provided and training option is not on
+        if predict_list[2] is None:
             print('ERROR: Path names to Layer objects must be provided to resume')
             passed = False
         if predict_list[3] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
+    
+    # if the user selected the 'featureRankingOnly' option
+    fr_list = [train_normexpr, train_metadata, layer_paths, frsplit]
+    if user_fr is True:
+        if fr_list[0] is None:
+            print('ERROR: Normalized expression matrix for training must be provided to resume')
+            passed = False
+        if fr_list[1] is None:
+            print('ERROR: Metadata file for training must be provided to resume')
+            passed = False
+        if fr_list[2] is None:
+            print('ERROR: Path names to Layer objects must be provided to resume')
+            passed = False
+        if fr_list[3] is None:
+            print('WARNING: Feature ranking split not provided but feature ranking on, will be automatically set to 0.3')
     return passed
 
 
-
 # Ensures all the user given variables for training exist or are in bounds
-def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, frsplit):
+def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
     passed = True
     if not os.path.exists(train_normexpr):
-        print('ERROR: Given normalized expression data file does not exist')
+        print('ERROR: Given normalized expression data file for training does not exist')
         passed = False
     if not os.path.exists(labelinfo):
         print('ERROR: Given label info file does not exist')
         passed = False
     if not os.path.exists(train_metadata):
-        print('ERROR: Given metadata file does not exist')
+        print('ERROR: Given metadata file for training does not exist')
         passed = False
     if testsplit is not None and (testsplit > 1 or testsplit < 0):
         print('ERROR: Given test split percentage must be a value between 0 and 1')
@@ -114,16 +107,13 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, re
     if rejection_cutoff > 1 or rejection_cutoff < 0:
         print('ERROR: Given rejection cutoff must be a value between 0 and 1')
         passed = False
-    if frsplit is not None and (frsplit > 1 or frsplit < 0):
-        print('ERROR: Given feature ranking split must be a value between 0 and 1')
-        passed = False
     return passed
 
 
 # Conducts training in all layers separated into different folders by name
 # Creates directory 'training' in cellpy_results folder, defines 'Root' as topmost layer
 # Conducts finetuning on Root layer with 50 iterations
-def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on, frsplit):
+def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
     global path
     path = os.path.join(path, 'training')
     os.mkdir(path)
@@ -141,7 +131,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         if layer.name == 'Root': # root top layer
             parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
             print(parameters)
-        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff], featrank_on, frsplit)
+        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
         path = os.getcwd()
     path = path + '/'
@@ -150,7 +140,6 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     print('Training Complete')
     os.chdir('..') # return to cellpy directory
     path = os.getcwd()
-    return all_layers
 
 
 # Converts the normalized expression csv into a pkl
@@ -234,10 +223,10 @@ def export_layers(all_layers):
 def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
     passed = True
     if not os.path.exists(val_normexpr):
-        print('ERROR: Given validation normalized expression data file does not exist')
+        print('ERROR: Given validation normalized expression data file for prediction does not exist')
         passed = False
     if val_metadata != None and not os.path.exists(val_metadata):
-        print('ERROR: Given validation metadata file does not exist')
+        print('ERROR: Given validation metadata file for prediction does not exist')
         passed = False
     # check all layer paths are objects and contain a trained xgb model
     if layer_paths != None:
@@ -256,13 +245,12 @@ def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
 
 # Conducts prediction in all layers separated into different folders by name
 # Creates directory 'prediction' in cellpy_results folder, defines 'Root' as topmost layer
-def prediction(val_normexpr, val_metadata, all_layers=None, object_paths=None):
-    if object_paths != None:
-        all_layers = import_layers(object_paths)
+def prediction(val_normexpr, val_metadata, object_paths):
     global path
     path = os.path.join(path, 'prediction')
     os.mkdir(path)
     os.chdir(path)
+    all_layers = import_layers(object_paths)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
@@ -313,27 +301,70 @@ def reorder_pickle(csvpath, featurenames):
             newindex.append(featurenames[i])
     print ('Overlapping # of genes: ' + str(len(newindex)))
     norm_express = norm_express.reindex(columns=newindex)
-    # Add missing genes
+    # Add missing features, remove extra features to match atlas
+    i = 0
     missing_counter = 0
-    for i in range(len(featurenames)):
+    while i < len(list(norm_express)):
         if list(norm_express)[i] != featurenames[i]:
             norm_express.insert(i, featurenames[i], None)
             missing_counter += 1
-    # i = 0
-    # missing_counter = 0
-    # while i < len(list(norm_express)):
-    #     if list(norm_express)[i] != featurenames[i]:
-    #         norm_express.insert(i, featurenames[i], None)
-    #         missing_counter += 1
-    #     i += 1
-    # while i < len(featurenames):
-    #     norm_express.insert(i, featurenames[i], None)
-    #     i += 1
-    #     missing_counter += 1
-    # overlapping + missing = atlas total
+        i += 1
+    while i < len(featurenames):
+        norm_express.insert(i, featurenames[i], None)
+        i += 1
+        missing_counter += 1
+    # Overlapping + missing = training total
     print ('Missing # of genes: ' + str(missing_counter))
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
 
+
+def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit):
+    passed = True
+    if not os.path.exists(train_normexpr):
+        print('ERROR: Given normalized expression data file for training does not exist')
+        passed = False
+    if not os.path.exists(train_metadata):
+        print('ERROR: Given metadata file for training does not exist')
+        passed = False
+    # check all layer paths are objects and contain a trained xgb model
+    if layer_paths != None:
+        for i in range(len(layer_paths)):
+            layer_path = layer_paths[i]
+            if not os.path.exists(layer_path):
+                print('ERROR: Given Layer object ' + str(i) + ' does not exist')
+                passed = False
+            else:
+                layer = pd.read_pickle(layer_path)
+                if layer.trained() is False:
+                    print('ERROR: Given Layer object ' + str(i) + ' is not trained')
+                    passed = False
+    if frsplit is not None and (frsplit > 1 or frsplit < 0):
+        print('ERROR: Given feature ranking split must be a value between 0 and 1')
+        passed = False
+    return passed
+
+
+# Conducts prediction in all layers separated into different folders by name
+# Creates directory 'prediction' in cellpy_results folder, defines 'Root' as topmost layer
+def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
+    global path
+    path = os.path.join(path, 'featureranking')
+    os.mkdir(path)
+    os.chdir(path)
+    csv2pkl(train_normexpr)
+    train_normexpr = train_normexpr[:-3] + 'pkl'
+    all_layers = import_layers(object_paths)
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
+        layer.featurerank_layer(train_normexpr, train_metadata, frsplit)
+        os.chdir('..') # return to prediction directory
+        path = os.getcwd()
+    print('Feature Ranking Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
 
 
 # Object for each layer of the model
@@ -349,7 +380,7 @@ class Layer:
     # cvmetrics, finalmetrics, cfm, pr are path names to those files
     # predictions, roc, fr are lists of path names
     def __init__(self, name, level, labeldict=None, xgbmodel=None, finetuning=None, cvmetrics=None,
-                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, fr=None, pickle=None):
+                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, pickle=None):
         self.name = name
         self.level = level
         self.labeldict = {}
@@ -361,7 +392,6 @@ class Layer:
         self.cfm = None
         self.roc = []
         self.pr = None
-        self.fr = []
         self.pickle = self.name + '_object.pkl'
     
     def __hash__(self):
@@ -392,11 +422,6 @@ class Layer:
                 return_str += 'Per-Class ROC Curves: ' + self.roc[1] + '\n'
                 return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
                 return_str += 'Precision-Recall Graph (10%, no rejection): ' + self.pr + '\n'
-            if self.fr != []:
-                return_str += 'Overall Feature Ranking: ' + self.fr[0] + '\n'
-                for i in range(len(self.fr)-2):
-                    return_str += self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.fr[i+1] + '\n'
-                return_str += 'Full Feature Importance List: ' + self.fr[len(self.fr)-1] + '\n'
         return return_str
     
     def finetuned(self):
@@ -480,7 +505,7 @@ class Layer:
     # Retrains model on (1-testsplit)% to output metrics when tested on holdout (testsplit)%
     # Retrains final saved model on 100% of data, returns for feature ranking
     # Conducts feature ranking with SHAP if instructed by user on full final model
-    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs, featrank_on, frsplit):
+    def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs):
         params['num_class'] = len(self.labeldict)
     
         if testsplit is not None:
@@ -525,11 +550,6 @@ class Layer:
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
-        
-        # retrain 100% for feature ranking and to avoid python variable mutability and lambda function errors
-        if featrank_on is True:
-            fr_model = xgb.train(params, d_all, 20, verbose_eval=500)
-            self.feature_ranking(fr_model, normexprpkl, metadatacsv, frsplit)
     
     
     # Outputs predictions of the 90% model on the 10% test set in a given dataset
@@ -543,6 +563,65 @@ class Layer:
             self.cfsn_mtx('validation', X, Y)
             self.model_metrics('validation', X, Y)
 
+
+    # Outputs SHAP feature ranking plots overall and for each class
+    # Outputs csv table containing overall SHAP values
+    # Uses same procedure for subsetting norm_expr as read_data(...) if column & criterium are provided
+    # frsplit automatically set to 0.3 if not provided
+    def featurerank_layer(self, normexprpkl, metadatacsv, frsplit):
+        norm_express = pd.read_pickle(normexprpkl)
+        tp = pd.read_csv(metadatacsv, iterator=True, chunksize=1000)
+        labels = pd.concat(tp, ignore_index=True)
+        labels.set_index('Unnamed: 0', inplace=True)
+        labels.index.names = [None]
+        # Only root level will have no subsetcolumn, all other levels require subsetting
+        # self.level is one less than what user sees since cellname column is dropped above
+        metadata_columns = list(labels.columns.values)
+        labelcolumn = metadata_columns[self.level]
+        subsetcolumn = metadata_columns[self.level-1] if self.level > 0 else None
+        subsetcriterium = self.name
+        # Filter out cells if subsetting necessary, keep only data from given criterium
+        if subsetcolumn != None:
+            # Reindex norm_express and labels based on cell names in given criterium
+            temp = labels.loc[labels[subsetcolumn] == subsetcriterium]
+            labels = labels.reindex(index=temp.index)
+            norm_express = norm_express.reindex(index=temp.index)
+        # Remove cells with labels not provided in the dictionary
+        if self.labeldict != None:
+            temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
+            labels = labels.reindex(index=temp.index)
+            norm_express = norm_express.reindex(index=temp.index)
+        norm_express, labels = shuffle(norm_express, labels)
+        if frsplit is None:
+            frsplit = 0.3
+        if frsplit != 1:
+            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
+    
+        model = self.xgbmodel
+        model_bytearray = model.save_raw()[4:]
+        model.save_raw = lambda: model_bytearray
+        shap_values = shap.TreeExplainer(model).shap_values(norm_express)
+        shap.summary_plot(shap_values, norm_express, show=False)
+        plt.tight_layout()
+        plt.savefig(path + self.name + '_overallfr.svg')
+        plt.clf()
+        for i in range(len(self.labeldict)):
+            shap.summary_plot(shap_values[i], norm_express, show=False)
+            plt.tight_layout()
+            plt.savefig(path + self.name + '_class'+str(i)+'fr.svg')
+            #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
+            plt.clf()
+        
+        vals = np.abs(shap_values).mean(0)
+        feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['Gene','Feature Importance Value'])
+        feature_importance.sort_values(by=['Feature Importance Value'], ascending=False, inplace=True)
+        feature_importance.to_csv(path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
+        
+        print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
+        for i in range(len(self.fr)-2):
+            print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+'fr.svg')
+        print('Full Feature Importance List: ' + self.name + '_featureimportances.csv')
+    
 
     # Reads the normalized gene expression data into a norm_expr dataframe
     # Reads the specified column in the metadata csv into a label dataframe
@@ -867,61 +946,6 @@ class Layer:
         plt.savefig(path + self.name + '_allpr.svg')
         plt.clf()
 
-    
-    # Outputs SHAP feature ranking plots overall AND for each class if conducting classification
-    # Uses same procedure for subsetting norm_expr as read_data(...) if column & criterium are provided
-    # frsplit automatically set to 0.3 if not provided
-    def feature_ranking(self, model, normexprpkl, metadatacsv, frsplit):
-        norm_express = pd.read_pickle(normexprpkl)
-        tp = pd.read_csv(metadatacsv, iterator=True, chunksize=1000)
-        labels = pd.concat(tp, ignore_index=True)
-        labels.set_index('Unnamed: 0', inplace=True)
-        labels.index.names = [None]
-        # Only root level will have no subsetcolumn, all other levels require subsetting
-        # self.level is one less than what user sees since cellname column is dropped above
-        metadata_columns = list(labels.columns.values)
-        labelcolumn = metadata_columns[self.level]
-        subsetcolumn = metadata_columns[self.level-1] if self.level > 0 else None
-        subsetcriterium = self.name
-        # Filter out cells if subsetting necessary, keep only data from given criterium
-        if subsetcolumn != None:
-            # Reindex norm_express and labels based on cell names in given criterium
-            temp = labels.loc[labels[subsetcolumn] == subsetcriterium]
-            labels = labels.reindex(index=temp.index)
-            norm_express = norm_express.reindex(index=temp.index)
-        # Remove cells with labels not provided in the dictionary
-        if self.labeldict != None:
-            temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
-            labels = labels.reindex(index=temp.index)
-            norm_express = norm_express.reindex(index=temp.index)
-        norm_express, labels = shuffle(norm_express, labels)
-        if frsplit is None:
-            frsplit = 0.3
-        if frsplit != 1:
-            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
-    
-        model_bytearray = model.save_raw()[4:]
-        model.save_raw = lambda: model_bytearray
-        shap_values = shap.TreeExplainer(model).shap_values(norm_express)
-        shap.summary_plot(shap_values, norm_express, show=False)
-        plt.tight_layout()
-        plt.savefig(path + self.name + '_overallfr.svg')
-        plt.clf()
-        self.fr.append(self.name + '_overallfr.svg')
-        for i in range(len(self.labeldict)):
-            shap.summary_plot(shap_values[i], norm_express, show=False)
-            plt.tight_layout()
-            plt.savefig(path + self.name + '_class'+str(i)+'fr.svg')
-            #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
-            plt.clf()
-            self.fr.append(self.name + '_class'+str(i)+'fr.svg')
-        
-        vals = np.abs(shap_values).mean(0)
-        feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['Gene','Feature Importance Value'])
-        feature_importance.sort_values(by=['Feature Importance Value'], ascending=False, inplace=True)
-        feature_importance.to_csv(path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
-        self.fr.append(self.name + '_featureimportances.csv')
-
 
 # Main function: reads in user input, selects a pathway, and trains / predicts
 def main():
@@ -943,6 +967,7 @@ def main():
     path = os.getcwd()
     user_train = False
     user_predict = False
+    user_fr = False
     train_normexpr = None
     labelinfo = None
     train_metadata = None
@@ -955,27 +980,26 @@ def main():
     layer_paths = None
     
     ## Command Line Interface
-    # runMode must be 'trainOnly', 'predictOnly', or 'trainAndPredict'
+    # runMode must be 'trainOnly', 'predictOnly', or 'featureRankingOnly'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
     #           if not provided, cross validation is skipped
-    # featureRanking must be 'on' or 'off'
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
     # predNormExpr, predMetadata are paths to their respective prediction files
     # layerObjectPath is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
+    # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
-                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=', 'featureRanking=', 'featureRankingSplit=',
-                         'rejectionCutoff=', 'predNormExpr=', 'predMetadata=', 'layerObjectPaths='])
+                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
+                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
             if value == 'trainOnly':
                 user_train = True
             elif value == 'predictOnly':
                 user_predict = True
-            elif value == 'trainAndPredict':
-                user_train = True
-                user_predict = True
+            elif value == 'featureRankingOnly':
+                user_fr = True
         if name in ['--trainNormExpr']:
             train_normexpr = value
         if name in ['--labelInfo']:
@@ -984,13 +1008,6 @@ def main():
             train_metadata = value
         if name in ['--testSplit']:
             testsplit = float(value)
-        if name in ['--featureRanking']:
-            if value == 'on':
-                featrank_on = True
-            elif value == 'off':
-                featrank_on = False
-        if name in ['--featureRankingSplit']:
-            frsplit = float(value)
         if name in ['--rejectionCutoff']:
             rejection_cutoff = float(value)
         if name in ['--predNormExpr']:
@@ -999,10 +1016,12 @@ def main():
             pred_metadata = value
         if name in ['--layerObjectPaths']:
             layer_paths = value.split(',')
+        if name in ['--featureRankingSplit']:
+            frsplit = float(value)
     
     # Check user provided variables follow an above cellpy pathway
-    passed_options = check_combinations(user_train, user_predict, train_normexpr, labelinfo, train_metadata, testsplit,
-                                        featrank_on, frsplit, rejection_cutoff, pred_normexpr, pred_metadata, layer_paths)
+    passed_options = check_combinations(user_train, user_predict, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+                                        rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
     
@@ -1017,25 +1036,27 @@ def main():
     # Check training files exist if training option called
     passed_train = None
     passed_predict = None
+    passed_fr = None
     if user_train is True:
-        passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, frsplit)
+        passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
     # Check prediction files exist if prediction option called
     if user_predict is True:
         passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths) 
-    if passed_train is False or passed_predict is False:
+    # Check feature ranking files exist if prediction option called
+    if user_fr is True:
+        passed_fr = check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit)
+    if (passed_train is False) or (passed_predict is False) or (passed_fr is False):
         raise ValueError('see printed error log above')
         
     # If training option is called and feasible
     if user_train is True and passed_train is True:
-        all_layers = training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff, featrank_on, frsplit)
+        training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
     # If prediction option is called and feasible
     if user_predict is True and passed_predict is True:
-        # if training option was called by user and passed check
-        if user_train is True and passed_train is True:
-            prediction(pred_normexpr, pred_metadata, all_layers=all_layers)
-        # user inputs list of Layer objects
-        elif layer_paths is not None:
-            prediction(pred_normexpr, pred_metadata, object_paths=layer_paths)
+        prediction(pred_normexpr, pred_metadata, layer_paths)
+    # If feature ranking option is called and feasible
+    if user_fr is True and passed_fr is True:
+        featureranking(train_normexpr, train_metadata, layer_paths, frsplit)
 
     # Print computational time and memory required
     time_elapsed = (time.perf_counter() - time_start)
