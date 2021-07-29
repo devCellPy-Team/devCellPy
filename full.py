@@ -949,17 +949,17 @@ class Layer:
 
 # Main function: reads in user input, selects a pathway, and trains / predicts
 def main():
-    ## CELLPY PATHWAYS
-    # 1a. automatic everything: training and validation w/ val_metadata
-    #           (path, normexpr, labelinfo, metadata, rejection_cutoff, val_normexpr, val_metadata)
-    # 1b. automatic everything: training and validation w/o val_metadata
-    #           (path, normexpr, labelinfo, metadata, rejection_cutoff, val_normexpr)
-    # 2.  just training 
-    #           (path, normexpr, labelinfo, metadata, rejection_cutoff)
-    # 3a. just validation: load in Layer objects and validation w/ val_metadata
-    #           (path, layer_paths, rejection_cutoff, val_normexpr, val_metdata)
-    # 3b. just validation: load in Layer objects and validation w/o val_metadata
-    #           (path, layer_paths, rejection_cutoff, val_normexpr)
+    ## CELLPY RUN OPTIONS
+    # 1a. training w/ cross validation and metrics
+    #       (runMode = trainOnly, trainNormExpr, labelInfo, trainMetadata, testSplit, rejectionCutoff)
+    # 1b. training w/o cross validation and metrics
+    #       (runMode = trainOnly, trainNormExpr, labelInfo, trainMetadata, rejectionCutoff)
+    # 2a. prediction w/ val_metadata
+    #       (runMode = predictionOnly, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
+    # 2b. prediction w/o val_metadata
+    #       (runMode = predictionOnly, predNormExpr, layerObjectPaths, rejectionCutoff)
+    # 3.  feature ranking
+    #       (runMOde = featureRankingOnly, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
     time_start = time.perf_counter()
     
     # All variables used for training and prediction set to None
@@ -983,7 +983,7 @@ def main():
     # runMode must be 'trainOnly', 'predictOnly', or 'featureRankingOnly'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
-    #           if not provided, cross validation is skipped
+    #           if not provided, cross validation is skipped, 100% model trained w/o metrics
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
     # predNormExpr, predMetadata are paths to their respective prediction files
     # layerObjectPath is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
