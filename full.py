@@ -618,7 +618,7 @@ class Layer:
         feature_importance.to_csv(path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
         
         print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
-        for i in range(len(self.fr)-2):
+        for i in range(len(self.labeldict)):
             print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+'fr.svg')
         print('Full Feature Importance List: ' + self.name + '_featureimportances.csv')
     
