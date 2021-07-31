@@ -587,15 +587,14 @@ class Layer:
             labels = labels.reindex(index=temp.index)
             norm_express = norm_express.reindex(index=temp.index)
         # Remove cells with labels not provided in the dictionary
-        if self.labeldict != None:
-            temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
-            labels = labels.reindex(index=temp.index)
-            norm_express = norm_express.reindex(index=temp.index)
+        temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
+        labels = labels.reindex(index=temp.index)
+        norm_express = norm_express.reindex(index=temp.index)
         norm_express, labels = shuffle(norm_express, labels)
         if frsplit is None:
             frsplit = 0.3
         if frsplit != 1:
-            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[0]
+            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[1]
     
         model = self.xgbmodel
         model_bytearray = model.save_raw()[4:]
