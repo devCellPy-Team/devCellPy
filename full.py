@@ -803,8 +803,8 @@ class Layer:
         
         for i in range(len(probabilities_xgb)):
             if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
-                del predictions_xgb[i]
-                del Y_test[i]
+                np.delete(predictions_xgb, i)
+                np.delete(Y_test, i)
                 i -= 1
         classnames = [self.labeldict[x] for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
