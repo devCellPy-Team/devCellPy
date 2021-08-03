@@ -30,13 +30,13 @@ import shap
 # Ensures given files satisfy one of the possible pathways provided by cellpy
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
-def check_combinations(user_train, user_predict, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                        rejection_cutoff, val_normexpr, val_metadata, layer_paths, frsplit):
     passed = True
     if user_train is None:
         print('ERROR: Run mode must be provided to resume')
         
-    # if the user selected the 'trainOnly' option
+    # if the user selected the 'trainAll' option
     train_list = [train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff]
     if user_train is True:
         print('Training option selected')
@@ -55,9 +55,9 @@ def check_combinations(user_train, user_predict, user_fr, train_normexpr, labeli
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
     
-    # if the user selected the 'predictOnly' option
+    # if the user selected the 'predictOne' or 'predictAll' options
     predict_list = [val_normexpr, val_metadata, layer_paths, rejection_cutoff]
-    if user_predict is True:
+    if (user_predict1 is True) or (user_predict2 is True):
         if val_metadata is not None:
             print('Prediction option with accuracy calculation selected')
         else:
@@ -72,7 +72,7 @@ def check_combinations(user_train, user_predict, user_fr, train_normexpr, labeli
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
     
-    # if the user selected the 'featureRankingOnly' option
+    # if the user selected the 'featureRankingOne' option
     fr_list = [train_normexpr, train_metadata, layer_paths, frsplit]
     if user_fr is True:
         if fr_list[0] is None:
@@ -129,7 +129,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         os.chdir(path)
         path = path + '/'
         if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
+            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
             print(parameters)
         layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
@@ -219,35 +219,58 @@ def export_layers(all_layers):
 
 
 
-# Ensures all the user given variables for validation exist / are in the correct format
-def check_predictionfiles(val_normexpr, val_metadata=None, layer_paths=None):
+# Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
+def check_predictionfiles(layer_paths, val_normexpr, val_metadata=None):
     passed = True
+    # check all layer paths are objects and contain a trained xgb model
+    for i in range(len(layer_paths)):
+        layer_path = layer_paths[i]
+        if not os.path.exists(layer_path):
+            print('ERROR: Given Layer object ' + str(i) + ' does not exist')
+            passed = False
+        else:
+            layer = pd.read_pickle(layer_path)
+            if layer.trained() is False:
+                print('ERROR: Given Layer object ' + str(i) + ' is not trained')
+                passed = False
     if not os.path.exists(val_normexpr):
         print('ERROR: Given validation normalized expression data file for prediction does not exist')
         passed = False
     if val_metadata != None and not os.path.exists(val_metadata):
         print('ERROR: Given validation metadata file for prediction does not exist')
         passed = False
-    # check all layer paths are objects and contain a trained xgb model
-    if layer_paths != None:
-        for i in range(len(layer_paths)):
-            layer_path = layer_paths[i]
-            if not os.path.exists(layer_path):
-                print('ERROR: Given Layer object ' + str(i) + ' does not exist')
-                passed = False
-            else:
-                layer = pd.read_pickle(layer_path)
-                if layer.trained() is False:
-                    print('ERROR: Given Layer object ' + str(i) + ' is not trained')
-                    passed = False
     return passed
 
 
-# Conducts prediction in all layers separated into different folders by name
-# Creates directory 'prediction' in cellpy_results folder, defines 'Root' as topmost layer
-def prediction(val_normexpr, val_metadata, object_paths):
+# Conducts prediction in specified layers separated into different folders by name
+# Creates directory 'predictionOne' in cellpy_results folder, defines 'Root' as topmost layer
+def prediction1(val_normexpr, val_metadata, object_paths):
     global path
-    path = os.path.join(path, 'prediction')
+    path = os.path.join(path, 'predictionOne')
+    os.mkdir(path)
+    os.chdir(path)
+    all_layers = import_layers(object_paths)
+    featurenames = all_layers[0].xgbmodel.feature_names
+    reorder_pickle(val_normexpr, featurenames)
+    val_normexpr = val_normexpr[:-3] + 'pkl'
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
+        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+        os.chdir('..') # return to prediction directory
+        path = os.getcwd()
+    print('Validation Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+
+
+# Conducts prediction in all layers in one folder
+# Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
+def prediction2(val_normexpr, val_metadata, object_paths):
+    global path
+    path = os.path.join(path, 'predictionAll')
     os.mkdir(path)
     os.chdir(path)
     all_layers = import_layers(object_paths)
@@ -433,10 +456,8 @@ class Layer:
     # Adds a value to the label dictionary if it is not already present
     # Utility function of fill_dict
     def add_dictentry(self, value):
-        curr_dict = self.labeldict
-        if value not in list(curr_dict.values()):
-            curr_dict[len(curr_dict)] = value
-            self.labeldict = curr_dict
+        if value not in list(self.labeldict.values()):
+            self.labeldict[len(self.labeldict)] = value
 
 
     # Hyperparameter tuning for XGBoost using accuracy
@@ -455,7 +476,7 @@ class Layer:
         min_mae = 100000000000000
         f = open(path + self.name + '_finetuning.csv', 'a+')
         f.write('ETA,Max Depth,Subsample,Colsample by Tree,')
-        for i in range(len(self.labeldict)-1):
+        for i in range(len(self.labeldict)):
             f.write(self.labeldict[i] + ' Accuracy')
             f.write(',')
         f.write('MAE\n')
@@ -520,19 +541,19 @@ class Layer:
                 d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
                 cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
                 self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
-                self.model_metrics('cv', X_valid, Y_valid)
+                self.model_metrics('cv', rejectcutoffs[1], X_valid, Y_valid)
                 self.cvmetrics = self.name + '_cvmetrics.txt'
         
             # 90% model, 10% testing
             d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
             temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
             self.xgbmodel = temp_model # temporarily set xgbmodel to (1-testsplit)% model
-            self.model_metrics('final', X_test, Y_test)
+            self.model_metrics('final', rejectcutoffs[1], X_test, Y_test)
             self.finalmetrics = self.name + '_finalmetrics.txt'
             self.cell_predictions('training', rejectcutoffs, test_cellnames, X_test, Y_test)
             for cutoff in rejectcutoffs:
                 self.predictions.append(self.name + '_trainingpredictions_reject' + str(cutoff) + '.csv')
-            self.cfsn_mtx('training', X_test, Y_test)
+            self.cfsn_mtx('training', rejectcutoffs[1], X_test, Y_test)
             self.cfm = self.name + '_confusionmatrix.svg'
             self.roc_curves(X_test, Y_test)
             self.roc.append(self.name + '_miacroroc.svg')
@@ -560,8 +581,8 @@ class Layer:
         X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv) # Y will be None if metadatacsv=None
         self.cell_predictions('validation', rejectcutoffs, all_cellnames, X, Y) # can handle Y=None
         if metadatacsv != None:
-            self.cfsn_mtx('validation', X, Y)
-            self.model_metrics('validation', X, Y)
+            self.cfsn_mtx('validation', rejectcutoffs[1], X, Y)
+            self.model_metrics('validation', rejectcutoffs[1], X, Y)
 
 
     # Outputs SHAP feature ranking plots overall and for each class
@@ -710,14 +731,19 @@ class Layer:
     
     # Calculates metrics of the Layer model on a provided test set and outputs it in a file
     # cv_final_val is a naming string to differentiate between cv, final, and validation metrics
-    def model_metrics(self, cv_final_val, X_test, Y_test):
+    def model_metrics(self, cv_final_val, rejectcutoff, X_test, Y_test):
+        self.add_dictentry('Unclassified')
         d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
+        for i in range(len(probabilities_xgb)):
+            if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
+                predictions_xgb[i] = len(self.labeldict)-1
         target_names = [str(x) for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         metrics = classification_report(Y_test, predictions_xgb, target_names=target_names)
         with open(path + self.name + '_' + cv_final_val + 'metrics.txt', 'a+') as f:
             print(metrics, file=f)
+        del self.labeldict[len(self.labeldict)-1]
     
     
     # Outputs predictions of the Layer model on a provided test set
@@ -730,7 +756,7 @@ class Layer:
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
-        self.labeldict[len(self.labeldict)] = 'Unclassified'
+        self.add_dictentry('Unclassified')
         for cutoff in rejectcutoffs:
             counter = 0
             for i in range(len(probabilities_xgb)):
@@ -763,10 +789,15 @@ class Layer:
     
     
     # Outputs a confusion matrix of the Layer model's results on a provided test set
-    def cfsn_mtx(self, train_val, X_test, Y_test):
+    # train_val is a naming string to differentiate between train/test predictions and validation predictions
+    def cfsn_mtx(self, train_val, rejectcutoff, X_test, Y_test):
         d_test = xgb.DMatrix(X_test, feature_names=feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
+        self.add_dictentry('Unclassified')
+        for i in range(len(probabilities_xgb)):
+            if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
+                predictions_xgb[i] = len(self.labeldict)-1
         classnames = [self.labeldict[x] for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         
         cm = confusion_matrix(Y_test, predictions_xgb)
@@ -790,6 +821,7 @@ class Layer:
         plt.tight_layout()
         plt.savefig(path + self.name + '_' + train_val + 'confusionmatrix.svg')
         plt.clf()
+        del self.labeldict[len(self.labeldict)-1]
 
 
     # Creates ROC curves for the Layer model on a provided test set
@@ -859,8 +891,8 @@ class Layer:
         plt.figure()
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
-                     label='ROC curve of class {0} (area = {1:0.2f})'
-                     ''.format(i, roc_auc[i]))
+                     label='ROC curve of {0} (area = {1:0.2f})'
+                     ''.format(self.labeldict[i], roc_auc[i]))
         plt.plot([0, 1], [0, 1], 'k--', lw=lw)
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
@@ -875,8 +907,8 @@ class Layer:
         plt.figure()
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
-                     label='ROC curve of class {0} (area = {1:0.2f})'
-                     ''.format(i, roc_auc[i]))
+                     label='ROC curve of {0} (area = {1:0.2f})'
+                     ''.format(self.labeldict[i], roc_auc[i]))
         plt.plot(fpr["micro"], tpr["micro"],
                  label='micro-average ROC curve (area = {0:0.2f})'
                        ''.format(roc_auc["micro"]),
@@ -889,7 +921,7 @@ class Layer:
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
-        plt.ylabel('Trueas Positive Rate')
+        plt.ylabel('True Positive Rate')
         plt.title('All ROC Curves')
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_allroc.svg')
@@ -926,8 +958,8 @@ class Layer:
         plt.figure()
         for i in range(n_classes):
             plt.plot(recall[i], precision[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
-                     label='PR curve of class {0} (area = {1:0.2f})'
-                     ''.format(i, average_precision[i]))
+                     label='PR curve of {0} (area = {1:0.2f})'
+                     ''.format(self.labeldict[i], average_precision[i]))
         plt.plot(recall["micro"], precision["micro"],
                  label='micro-average PR curve (area = {0:0.2f})'
                        ''.format(average_precision["micro"]),
@@ -950,28 +982,30 @@ class Layer:
 def main():
     ## CELLPY RUN OPTIONS
     # 1a. training w/ cross validation and metrics
-    #       (runMode = trainOnly, trainNormExpr, labelInfo, trainMetadata, testSplit, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, trainMetadata, testSplit, rejectionCutoff)
     # 1b. training w/o cross validation and metrics
-    #       (runMode = trainOnly, trainNormExpr, labelInfo, trainMetadata, rejectionCutoff)
-    # 2a. prediction w/ val_metadata
-    #       (runMode = predictionOnly, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
-    # 2b. prediction w/o val_metadata
-    #       (runMode = predictionOnly, predNormExpr, layerObjectPaths, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, trainMetadata, rejectionCutoff)
+    # 2a. prediction w/ metadata
+    #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
+    # 2b. prediction w/o metadata, each layer's prediction independent of predictions from other layers
+    #       (runMode = predictOne, predNormExpr, layerObjectPaths, rejectionCutoff)
+    # 2c. prediction w/o metadata, each layer's prediction influences next layer's prediction
+    #       (runMode = predictAll, predNormExpr, layerObjectPaths, rejectionCutoff)
     # 3.  feature ranking
-    #       (runMOde = featureRankingOnly, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
+    #       (runMOde = featureRankingOne, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
     time_start = time.perf_counter()
     
     # All variables used for training and prediction set to None
     global path, rejection_cutoff
     path = os.getcwd()
     user_train = False
-    user_predict = False
+    user_predict1 = False
+    user_predict2 = False
     user_fr = False
     train_normexpr = None
     labelinfo = None
     train_metadata = None
     testsplit = None
-    featrank_on = None
     frsplit = None
     rejection_cutoff = None
     pred_normexpr = None
@@ -979,7 +1013,7 @@ def main():
     layer_paths = None
     
     ## Command Line Interface
-    # runMode must be 'trainOnly', 'predictOnly', or 'featureRankingOnly'
+    # runMode must be 'trainAll', 'predictOne', 'predictAll', or 'featureRankingOne'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
     #           if not provided, cross validation is skipped, 100% model trained w/o metrics
@@ -993,11 +1027,13 @@ def main():
                          'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
-            if value == 'trainOnly':
+            if value == 'trainAll':
                 user_train = True
-            elif value == 'predictOnly':
-                user_predict = True
-            elif value == 'featureRankingOnly':
+            elif value == 'predictOne':
+                user_predict1 = True
+            elif value == 'predictAll':
+                user_predict2 = True
+            elif value == 'featureRankingOne':
                 user_fr = True
         if name in ['--trainNormExpr']:
             train_normexpr = value
@@ -1019,7 +1055,7 @@ def main():
             frsplit = float(value)
     
     # Check user provided variables follow an above cellpy pathway
-    passed_options = check_combinations(user_train, user_predict, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+    passed_options = check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                                         rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
@@ -1038,10 +1074,10 @@ def main():
     passed_fr = None
     if user_train is True:
         passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
-    # Check prediction files exist if prediction option called
-    if user_predict is True:
-        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths) 
-    # Check feature ranking files exist if prediction option called
+    # Check prediction files exist if either of the prediction options is called
+    if (user_predict1 is True) or (user_predict2 is True):
+        passed_predict = check_predictionfiles(layer_paths, pred_normexpr, pred_metadata)
+    # Check feature ranking files exist if feature ranking option called
     if user_fr is True:
         passed_fr = check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit)
     if (passed_train is False) or (passed_predict is False) or (passed_fr is False):
@@ -1050,9 +1086,12 @@ def main():
     # If training option is called and feasible
     if user_train is True and passed_train is True:
         training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
-    # If prediction option is called and feasible
-    if user_predict is True and passed_predict is True:
-        prediction(pred_normexpr, pred_metadata, layer_paths)
+    # If prediction one option is called and feasible
+    if user_predict1 is True and passed_predict is True:
+        prediction1(pred_normexpr, pred_metadata, layer_paths)
+    # If prediction all option is called and feasible
+    if user_predict2 is True and passed_predict is True:
+        prediction2(pred_normexpr, pred_metadata, layer_paths)
     # If feature ranking option is called and feasible
     if user_fr is True and passed_fr is True:
         featureranking(train_normexpr, train_metadata, layer_paths, frsplit)
