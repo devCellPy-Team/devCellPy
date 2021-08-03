@@ -129,7 +129,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         os.chdir(path)
         path = path + '/'
         if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
             print(parameters)
         layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
@@ -214,9 +214,8 @@ def training_summary(all_layers):
 # Exports all the trained Layers as pickle files
 def export_layers(all_layers):
     for layer in all_layers:
-        with open(path + layer.name + '_object.pkl', 'wb') as output:
+        with open(path + layer.name.replace(' ', '') + '_object.pkl', 'wb') as output:
             pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
-
 
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
@@ -798,11 +797,18 @@ class Layer:
         for i in range(len(probabilities_xgb)):
             if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
                 predictions_xgb[i] = len(self.labeldict)-1
-        classnames = [self.labeldict[x] for x in sorted(list(set(Y_test).union(predictions_xgb)))]
-        
         cm = confusion_matrix(Y_test, predictions_xgb)
         print(cm)
+        del self.labeldict[len(self.labeldict)-1]
+        
+        for i in range(len(probabilities_xgb)):
+            if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
+                del predictions_xgb[i]
+                del Y_test[i]
+                i -= 1
+        classnames = [self.labeldict[x] for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        plt.figure(figsize=(15,10))
         plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
         plt.colorbar()
         tick_marks = np.arange(len(classnames))
@@ -821,7 +827,6 @@ class Layer:
         plt.tight_layout()
         plt.savefig(path + self.name + '_' + train_val + 'confusionmatrix.svg')
         plt.clf()
-        del self.labeldict[len(self.labeldict)-1]
 
 
     # Creates ROC curves for the Layer model on a provided test set
