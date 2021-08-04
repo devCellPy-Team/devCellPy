@@ -129,7 +129,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         os.chdir(path)
         path = path + '/'
         if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(2, testsplit, train_normexpr, train_metadata)
+            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
             print(parameters)
         layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
@@ -801,25 +801,27 @@ class Layer:
         print(cm)
         del self.labeldict[len(self.labeldict)-1]
         
-        for i in range(len(probabilities_xgb)):
-            if probabilities_xgb[i,probabilities_xgb.argmax(axis=1)[i]] < rejectcutoff:
-                np.delete(predictions_xgb, i)
-                np.delete(Y_test, i)
-                i -= 1
+        for i in range(len(predictions_xgb)-1, -1, -1):
+            if predictions_xgb[i] == len(self.labeldict):
+                predictions_xgb = np.delete(predictions_xgb, i)
+                Y_test = np.delete(Y_test, i)
+        cm_removed = confusion_matrix(Y_test, predictions_xgb)
+        print(cm_removed)
         classnames = [self.labeldict[x] for x in sorted(list(set(Y_test).union(predictions_xgb)))]
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print(classnames)
+        cm_removed = cm_removed.astype('float') / cm_removed.sum(axis=1)[:, np.newaxis]
         plt.figure(figsize=(15,10))
-        plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        plt.imshow(cm_removed, interpolation='nearest', cmap=plt.cm.Blues)
         plt.colorbar()
         tick_marks = np.arange(len(classnames))
         plt.xticks(tick_marks, classnames, rotation=45)
         plt.yticks(tick_marks, classnames)
     
-        thresh = cm.max() / 2.
-        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            plt.text(j, i, '%0.3f' % cm[i,j] if cm[i,j] > 0 else 0,
+        thresh = cm_removed.max() / 2.
+        for i, j in itertools.product(range(cm_removed.shape[0]), range(cm_removed.shape[1])):
+            plt.text(j, i, '%0.3f' % cm_removed[i,j] if cm_removed[i,j] > 0 else 0,
                 horizontalalignment='center', verticalalignment='center',
-                color='white' if cm[i,j] > thresh else 'black', fontsize=6)
+                color='white' if cm_removed[i,j] > thresh else 'black', fontsize=6)
     
         plt.tight_layout()
         plt.ylabel('True label')
