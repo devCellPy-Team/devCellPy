@@ -58,10 +58,14 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
     # if the user selected the 'predictOne' or 'predictAll' options
     predict_list = [val_normexpr, val_metadata, layer_paths, rejection_cutoff]
     if (user_predict1 is True) or (user_predict2 is True):
-        if val_metadata is not None:
-            print('Prediction option with accuracy calculation selected')
-        else:
-            print('Prediction option without accuracy calculation selected')
+        if val_metadata is not None and user_predict1 is True:
+            print('Independent prediction option with accuracy calculation selected')
+        elif val_metadata is not None and user_predict2 is True:
+            print('WARNING: Dependent prediction option does not conduct accuracy calculation, provided metadata file will not be used')
+        elif val_metadata is None and user_predict1 is True:
+            print('Independent prediction option without accuracy calculation selected')
+        elif val_metadata is None and user_predict1 is True:
+            print('Dependent prediction option selected')
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
             passed = False
@@ -194,7 +198,7 @@ def fill_dict(labeldata, all_layers):
                 break
 
 
-# Utility function of fill_dict, searches all_layers for a layer with the given name
+# Utility function, searches a list of all_layers for a layer with the given name
 def find_layer(all_layers, name):
     for layer in all_layers:
         if layer.name == name:
@@ -260,31 +264,74 @@ def prediction1(val_normexpr, val_metadata, object_paths):
         layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
         os.chdir('..') # return to prediction directory
         path = os.getcwd()
-    print('Validation Complete')
+    print('Prediction Complete')
     os.chdir('..') # return to cellpy directory
     path = os.getcwd()
 
 
 # Conducts prediction in all layers in one folder
 # Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
-def prediction2(val_normexpr, val_metadata, object_paths):
+def prediction2(val_normexpr, object_paths):
     global path
     path = os.path.join(path, 'predictionAll')
     os.mkdir(path)
     os.chdir(path)
+    path = path + '/'
+    
     all_layers = import_layers(object_paths)
+    print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
-    for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
-        os.mkdir(path)
-        os.chdir(path)
-        path = path + '/'
-        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
-        os.chdir('..') # return to prediction directory
-        path = os.getcwd()
-    print('Validation Complete')
+    
+    norm_express = pd.read_pickle(val_normexpr)
+    feature_names = list(norm_express)
+    print(norm_express.shape)
+    X = norm_express.values
+    
+    X = norm_express.values
+    norm_express.index.name = 'cells'
+    norm_express.reset_index(inplace=True)
+    Y = norm_express.values
+    all_cellnames = Y[:,0]
+    all_cellnames = all_cellnames.ravel()
+    Y = None
+    
+    f = open(path + 'predictionall_reject' + str(rejection_cutoff) + '.csv','w')
+    for i in range(len(all_cellnames)):
+        sample = np.array(X[i])#.reshape((-1,1))
+        sample = np.vstack((sample, np.zeros(len(feature_names))))
+        d_test = xgb.DMatrix(sample, feature_names=feature_names)
+        root_layer = find_layer(all_layers, 'Root')
+        root_layer.add_dictentry('Unclassified')
+        probabilities_xgb = root_layer.xgbmodel.predict(d_test)
+        predictions_xgb = probabilities_xgb.argmax(axis=1)
+        if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
+            predictions_xgb[0] = len(root_layer.labeldict)-1
+        f.write(all_cellnames[i])
+        f.write(',')
+        f.write(root_layer.labeldict[predictions_xgb[0]])
+        
+        search_str = root_layer.labeldict[predictions_xgb[0]]
+        del root_layer.labeldict[len(root_layer.labeldict)-1]
+        while(True):
+            curr_layer = find_layer(all_layers, search_str)
+            if curr_layer is not None:
+                curr_layer.add_dictentry('Unclassified')
+                probabilities_xgb = curr_layer.xgbmodel.predict(d_test)
+                predictions_xgb = probabilities_xgb.argmax(axis=1)
+                if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
+                    predictions_xgb[0] = len(curr_layer.labeldict)-1
+                f.write(',')
+                f.write(curr_layer.labeldict[predictions_xgb[0]])
+                search_str = curr_layer.labeldict[predictions_xgb[0]]
+                del curr_layer.labeldict[len(curr_layer.labeldict)-1]
+            else:
+                break
+        f.write('\n')
+    f.close()
+    
+    print('Prediction Complete')
     os.chdir('..') # return to cellpy directory
     path = os.getcwd()
 
@@ -1098,7 +1145,7 @@ def main():
         prediction1(pred_normexpr, pred_metadata, layer_paths)
     # If prediction all option is called and feasible
     if user_predict2 is True and passed_predict is True:
-        prediction2(pred_normexpr, pred_metadata, layer_paths)
+        prediction2(pred_normexpr, layer_paths)
     # If feature ranking option is called and feasible
     if user_fr is True and passed_fr is True:
         featureranking(train_normexpr, train_metadata, layer_paths, frsplit)
