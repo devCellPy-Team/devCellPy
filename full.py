@@ -1154,7 +1154,11 @@ def main():
     time_elapsed = (time.perf_counter() - time_start)
     memMb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024.0/1024.0
     print ("%5.1f secs %5.1f MByte" % (time_elapsed,memMb))
-
+    
+    layer = import_layers(['/Users/sidraxu/Documents/GitHub/CellPy/cellpy_results_20210728190956/training/T-cell_object.pkl'])
+    model = pickle.load(open('/Users/sidraxu/Documents/GitHub/CellPy/cellpy_results_20210728190956/training/T-cell/T-cell_xgbmodel.sav','rb'))
+    layer[0].xgbmodel = model
+    export_layers(layer)
 
 if __name__ == "__main__":
     main()
