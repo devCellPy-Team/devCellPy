@@ -8,11 +8,11 @@ XGB Model: Root_xgbmodel.sav
 Final Metrics (10%): Root_finalmetrics.txt
 Predictions (no rejection): Root_trainingpredictions_reject0.csv
 Predictions (0.5 rejection cutoff): Root_trainingpredictions_reject0.5.csv
-Confusion Matrix (10%, no rejection): Root_confusionmatrix.svg
+Confusion Matrix (10%, w/ rejection): Root_confusionmatrix.svg
 Micro/Macro ROC Curves: Root_miacroroc.svg
 Per-Class ROC Curves: Root_classroc.svg
 All Combined ROC Curves: Root_allroc.svg
-Precision-Recall Graph (10%, no rejection): Root_allpr.svg
+Precision-Recall Graph (10%, w/ rejection): Root_allpr.svg
 
 Object: T-cell_object.pkl
 Layer: T-cell
@@ -23,11 +23,11 @@ XGB Model: T-cell_xgbmodel.sav
 Final Metrics (10%): T-cell_finalmetrics.txt
 Predictions (no rejection): T-cell_trainingpredictions_reject0.csv
 Predictions (0.5 rejection cutoff): T-cell_trainingpredictions_reject0.5.csv
-Confusion Matrix (10%, no rejection): T-cell_confusionmatrix.svg
+Confusion Matrix (10%, w/ rejection): T-cell_confusionmatrix.svg
 Micro/Macro ROC Curves: T-cell_miacroroc.svg
 Per-Class ROC Curves: T-cell_classroc.svg
 All Combined ROC Curves: T-cell_allroc.svg
-Precision-Recall Graph (10%, no rejection): T-cell_allpr.svg
+Precision-Recall Graph (10%, w/ rejection): T-cell_allpr.svg
 
 Object: CD4_object.pkl
 Layer: CD4
@@ -38,11 +38,11 @@ XGB Model: CD4_xgbmodel.sav
 Final Metrics (10%): CD4_finalmetrics.txt
 Predictions (no rejection): CD4_trainingpredictions_reject0.csv
 Predictions (0.5 rejection cutoff): CD4_trainingpredictions_reject0.5.csv
-Confusion Matrix (10%, no rejection): CD4_confusionmatrix.svg
+Confusion Matrix (10%, w/ rejection): CD4_confusionmatrix.svg
 Micro/Macro ROC Curves: CD4_miacroroc.svg
 Per-Class ROC Curves: CD4_classroc.svg
 All Combined ROC Curves: CD4_allroc.svg
-Precision-Recall Graph (10%, no rejection): CD4_allpr.svg
+Precision-Recall Graph (10%, w/ rejection): CD4_allpr.svg
 
 Object: CD8_object.pkl
 Layer: CD8
@@ -53,9 +53,9 @@ XGB Model: CD8_xgbmodel.sav
 Final Metrics (10%): CD8_finalmetrics.txt
 Predictions (no rejection): CD8_trainingpredictions_reject0.csv
 Predictions (0.5 rejection cutoff): CD8_trainingpredictions_reject0.5.csv
-Confusion Matrix (10%, no rejection): CD8_confusionmatrix.svg
+Confusion Matrix (10%, w/ rejection): CD8_confusionmatrix.svg
 Micro/Macro ROC Curves: CD8_miacroroc.svg
 Per-Class ROC Curves: CD8_classroc.svg
 All Combined ROC Curves: CD8_allroc.svg
-Precision-Recall Graph (10%, no rejection): CD8_allpr.svg
+Precision-Recall Graph (10%, w/ rejection): CD8_allpr.svg
 
