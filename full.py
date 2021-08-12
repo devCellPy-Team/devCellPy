@@ -483,14 +483,14 @@ class Layer:
             return_str += 'XGB Model: ' + self.name + '_xgbmodel.sav' + '\n'
             if self.cvmetrics is not None:
                 return_str += '10-Fold Cross Validation Metrics: ' + self.cvmetrics + '\n'
-                return_str += 'Final Metrics (10%): ' + self.finalmetrics + '\n'
+                return_str += 'Final Metrics: ' + self.finalmetrics + '\n'
                 return_str += 'Predictions (no rejection): ' + self.predictions[0] + '\n'
                 return_str += 'Predictions (' + str(rejection_cutoff) + ' rejection cutoff): ' + self.predictions[1] + '\n'
-                return_str += 'Confusion Matrix (10%, w/ rejection): ' + self.cfm + '\n'
+                return_str += 'Confusion Matrix (w/ rejection): ' + self.cfm + '\n'
                 return_str += 'Micro/Macro ROC Curves: ' + self.roc[0] + '\n'
                 return_str += 'Per-Class ROC Curves: ' + self.roc[1] + '\n'
                 return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
-                return_str += 'Precision-Recall Graph (10%, w/ rejection): ' + self.pr + '\n'
+                return_str += 'Precision-Recall Curves: ' + self.pr + '\n'
         return return_str
     
     def finetuned(self):
