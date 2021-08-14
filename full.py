@@ -246,8 +246,8 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
                 if layer.trained() is False:
                     print('ERROR: Given Layer object ' + layer_path + ' is not trained')
                     passed = False
-    elif time_point > 16 or time_point < 7:
-        print('ERROR: Given timepoint must be a value between 7 and 16')
+    elif time_point > 14 or time_point < 7.5:
+        print('ERROR: Given timepoint must be a value between 7.5 and 14')
         passed = False
     else:
         layer_paths = ['/cardiacdevatlas_objects/Root_object.pkl',
@@ -1178,10 +1178,10 @@ def main():
     if time_point < 8:
         print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
         layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E7.75_object.pkl')
-    elif time_point < 8.75:
+    elif time_point < 9:
         print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
         layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E8.25_object.pkl')
-    elif time_point < 9.875:
+    elif time_point < 10:
         print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
         layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E9.25_object.pkl')
     elif time_point < 12:
