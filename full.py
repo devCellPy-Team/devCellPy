@@ -31,7 +31,7 @@ import shap
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
 def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
-                       rejection_cutoff, val_normexpr, val_metadata, layer_paths, frsplit):
+                       rejection_cutoff, val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, frsplit):
     passed = True
     if user_train is None:
         print('ERROR: Run mode must be provided to resume')
@@ -56,7 +56,7 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
             passed = False
     
     # if the user selected the 'predictOne' or 'predictAll' options
-    predict_list = [val_normexpr, val_metadata, layer_paths, rejection_cutoff]
+    predict_list = [val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, rejection_cutoff]
     if (user_predict1 is True) or (user_predict2 is True):
         if val_metadata is not None and user_predict1 is True:
             print('Independent prediction option with accuracy calculation selected')
@@ -69,10 +69,13 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
             passed = False
-        if predict_list[2] is None:
+        if predict_list[2] is None and predict_list[3] is False:
             print('ERROR: Path names to Layer objects must be provided to resume')
             passed = False
-        if predict_list[3] is None:
+        if predict_list[3] is True and time_point is None:
+            print('ERROR: Cardiac dev atlas timepoint must be provided to resume')
+            passed = False
+        if predict_list[5] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
     
@@ -223,25 +226,42 @@ def export_layers(all_layers):
 
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
-def check_predictionfiles(layer_paths, val_normexpr, val_metadata=None):
+def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
     passed = True
-    # check all layer paths are objects and contain a trained xgb model
-    for i in range(len(layer_paths)):
-        layer_path = layer_paths[i]
-        if not os.path.exists(layer_path):
-            print('ERROR: Given Layer object ' + str(i) + ' does not exist')
-            passed = False
-        else:
-            layer = pd.read_pickle(layer_path)
-            if layer.trained() is False:
-                print('ERROR: Given Layer object ' + str(i) + ' is not trained')
-                passed = False
     if not os.path.exists(val_normexpr):
         print('ERROR: Given validation normalized expression data file for prediction does not exist')
         passed = False
     if val_metadata != None and not os.path.exists(val_metadata):
         print('ERROR: Given validation metadata file for prediction does not exist')
         passed = False
+    # check all layer paths are objects and contain a trained xgb model
+    if time_point is None:
+        for i in range(len(layer_paths)):
+            layer_path = layer_paths[i]
+            if not os.path.exists(layer_path):
+                print('ERROR: Given Layer object ' + layer_path + ' does not exist')
+                passed = False
+            else:
+                layer = pd.read_pickle(layer_path)
+                if layer.trained() is False:
+                    print('ERROR: Given Layer object ' + layer_path + ' is not trained')
+                    passed = False
+    elif time_point > 16 or time_point < 7:
+        print('ERROR: Given timepoint must be a value between 7 and 16')
+        passed = False
+    else:
+        layer_paths = ['/cardiacdevatlas_objects/Root_object.pkl',
+                       '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
+                       '/cardiacdevatlas_objects/E7.75_object.pkl',
+                       '/cardiacdevatlas_objects/E8.25_object.pkl',
+                       '/cardiacdevatlas_objects/E9.25_object.pkl',
+                       '/cardiacdevatlas_objects/E10.5_object.pkl',
+                       '/cardiacdevatlas_objects/E13.5_object.pkl']
+        for i in range(len(layer_paths)):
+            layer_path = layer_paths[i]
+            if not os.path.exists(path_cellpy + layer_path):
+                print('ERROR: CellPy directory ' + path_cellpy + ' does not contain cardiac dev atlas object ' + layer_path)
+                passed = False
     return passed
 
 
@@ -661,7 +681,8 @@ class Layer:
         if frsplit is None:
             frsplit = 0.3
         if frsplit != 1:
-            norm_express = train_test_split(norm_express, labels, test_size=frsplit, random_state=42, shuffle = True, stratify = labels[labelcolumn])[1]
+            norm_express = train_test_split(norm_express, labels, test_size=frsplit,
+                                            random_state=42, shuffle = True, stratify = labels[labelcolumn])[1]
     
         model = self.xgbmodel
         model_bytearray = model.save_raw()[4:]
@@ -1056,8 +1077,9 @@ def main():
     time_start = time.perf_counter()
     
     # All variables used for training and prediction set to None
-    global path, rejection_cutoff
+    global path, path_cellpy, rejection_cutoff
     path = os.getcwd()
+    path_cellpy = os.getcwd() + '/CellPy'
     user_train = False
     user_predict1 = False
     user_predict2 = False
@@ -1070,6 +1092,7 @@ def main():
     pred_normexpr = None
     pred_metadata = None
     layer_paths = None
+    cardiac_dev = False
     time_point = None
     frsplit = None
     
@@ -1085,7 +1108,7 @@ def main():
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
                         ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
-                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
+                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'timePoint=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
             if value == 'trainAll':
@@ -1111,13 +1134,18 @@ def main():
         if name in ['--predMetadata']:
             pred_metadata = value
         if name in ['--layerObjectPaths']:
-            layer_paths = value.split(',')
+            if value == 'cardiacDevAtlas':
+                cardiac_dev = True
+            else:
+                layer_paths = value.split(',')
+        if name in ['--timePoint']:
+            time_point = float(value)
         if name in ['--featureRankingSplit']:
             frsplit = float(value)
     
     # Check user provided variables follow an above cellpy pathway
     passed_options = check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
-                                        rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, frsplit)
+                                        rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, cardiac_dev, time_point, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
     
@@ -1137,12 +1165,31 @@ def main():
         passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
     # Check prediction files exist if either of the prediction options is called
     if (user_predict1 is True) or (user_predict2 is True):
-        passed_predict = check_predictionfiles(layer_paths, pred_normexpr, pred_metadata)
+        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths, time_point)
     # Check feature ranking files exist if feature ranking option called
     if user_fr is True:
         passed_fr = check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit)
     if (passed_train is False) or (passed_predict is False) or (passed_fr is False):
         raise ValueError('see printed error log above')
+    
+    # Initialize layer_paths if cardiacDevAtlas option is selected
+    layer_paths = [path_cellpy + '/cardiacdevatlas_objects/Root_object.pkl',
+                   path_cellpy + '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
+    if time_point < 8:
+        print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
+        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E7.75_object.pkl')
+    elif time_point < 8.75:
+        print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
+        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E8.25_object.pkl')
+    elif time_point < 9.875:
+        print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
+        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E9.25_object.pkl')
+    elif time_point < 12:
+        print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
+        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E10.5_object.pkl')
+    else:
+        print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
+        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E13.5_object.pkl')
         
     # If training option is called and feasible
     if user_train is True and passed_train is True:
