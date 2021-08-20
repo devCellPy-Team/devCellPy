@@ -1103,7 +1103,11 @@ def main():
     #           if not provided, cross validation is skipped, 100% model trained w/o metrics
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
     # predNormExpr, predMetadata are paths to their respective prediction files
-    # layerObjectPath is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
+    # layerObjectPaths is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
+    #           if the user wishes to use the pretrained cardiac developmental cell atlas objects,
+    #           the option cardiacDevAtlas should be submitted for layerObjectPaths instead
+    # timePoint is only required if the cardiacDevAtlas option is selected for layerObjectPaths
+    #           should be between 7.5 and 14, the age of the cardiac cells in the normalized expression matrix
     # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
@@ -1173,23 +1177,24 @@ def main():
         raise ValueError('see printed error log above')
     
     # Initialize layer_paths if cardiacDevAtlas option is selected
-    layer_paths = [path_cellpy + '/cardiacdevatlas_objects/Root_object.pkl',
-                   path_cellpy + '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
-    if time_point < 8:
-        print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
-        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E7.75_object.pkl')
-    elif time_point < 9:
-        print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
-        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E8.25_object.pkl')
-    elif time_point < 10:
-        print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
-        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E9.25_object.pkl')
-    elif time_point < 12:
-        print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
-        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E10.5_object.pkl')
-    else:
-        print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
-        layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E13.5_object.pkl')
+    if cardiac_dev is True:
+        layer_paths = [path_cellpy + '/cardiacdevatlas_objects/Root_object.pkl',
+                       path_cellpy + '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
+        if time_point < 8:
+            print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
+            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E7.75_object.pkl')
+        elif time_point < 9:
+            print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
+            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E8.25_object.pkl')
+        elif time_point < 10:
+            print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
+            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E9.25_object.pkl')
+        elif time_point < 12:
+            print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
+            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E10.5_object.pkl')
+        else:
+            print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
+            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E13.5_object.pkl')
         
     # If training option is called and feasible
     if user_train is True and passed_train is True:
