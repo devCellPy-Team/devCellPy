@@ -695,7 +695,7 @@ class Layer:
         for i in range(len(self.labeldict)):
             shap.summary_plot(shap_values[i], norm_express, show=False)
             plt.tight_layout()
-            plt.savefig(path + self.name + '_class'+str(i)+'fr.svg')
+            plt.savefig(path + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
             #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
             plt.clf()
         
@@ -706,7 +706,7 @@ class Layer:
         
         print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
         for i in range(len(self.labeldict)):
-            print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+'fr.svg')
+            print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
         print('Full Feature Importance List: ' + self.name + '_featureimportances.csv')
     
 
