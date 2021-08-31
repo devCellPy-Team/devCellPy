@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import time
-import resource 
+import resource
 import sys
 import getopt
 import os
@@ -35,7 +35,7 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
     passed = True
     if user_train is None:
         print('ERROR: Run mode must be provided to resume')
-        
+
     # if the user selected the 'trainAll' option
     train_list = [train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff]
     if user_train is True:
@@ -54,7 +54,7 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
         if train_list[4] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
-    
+
     # if the user selected the 'predictOne' or 'predictAll' options
     predict_list = [val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, rejection_cutoff]
     if (user_predict1 is True) or (user_predict2 is True):
@@ -78,7 +78,7 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
         if predict_list[5] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
-    
+
     # if the user selected the 'featureRankingOne' option
     fr_list = [train_normexpr, train_metadata, layer_paths, frsplit]
     if user_fr is True:
@@ -250,17 +250,17 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
         print('ERROR: Given timepoint must be a value between 7.5 and 14')
         passed = False
     else:
-        layer_paths = ['/cardiacdevatlas_objects/Root_object.pkl',
-                       '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
-                       '/cardiacdevatlas_objects/E7.75_object.pkl',
-                       '/cardiacdevatlas_objects/E8.25_object.pkl',
-                       '/cardiacdevatlas_objects/E9.25_object.pkl',
-                       '/cardiacdevatlas_objects/E10.5_object.pkl',
-                       '/cardiacdevatlas_objects/E13.5_object.pkl']
+        layer_paths = ['/CellPy-main/cardiacdevatlas_objects/Root_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/E7.75_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/E8.25_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/E9.25_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/E10.5_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl']
         for i in range(len(layer_paths)):
             layer_path = layer_paths[i]
-            if not os.path.exists(path_cellpy + layer_path):
-                print('ERROR: CellPy directory ' + path_cellpy + ' does not contain cardiac dev atlas object ' + layer_path)
+            if not os.path.exists(path_cda + layer_path):
+                print('ERROR: Current directory ' + path_cda + ' does not contain cardiac dev atlas object ' + layer_path)
                 passed = False
     return passed
 
@@ -297,18 +297,18 @@ def prediction2(val_normexpr, object_paths):
     os.mkdir(path)
     os.chdir(path)
     path = path + '/'
-    
+
     all_layers = import_layers(object_paths)
     print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
-    
+
     norm_express = pd.read_pickle(val_normexpr)
     feature_names = list(norm_express)
     print(norm_express.shape)
     X = norm_express.values
-    
+
     X = norm_express.values
     norm_express.index.name = 'cells'
     norm_express.reset_index(inplace=True)
@@ -316,13 +316,13 @@ def prediction2(val_normexpr, object_paths):
     all_cellnames = Y[:,0]
     all_cellnames = all_cellnames.ravel()
     Y = None
-    
+
     f = open(path + 'predictionall_reject' + str(rejection_cutoff) + '.csv','w')
     for i in range(len(all_cellnames)):
         sample = np.array(X[i])#.reshape((-1,1))
         sample = np.vstack((sample, np.zeros(len(feature_names))))
         d_test = xgb.DMatrix(sample, feature_names=feature_names)
-        root_layer = find_layer(all_layers, 'Root')
+        root_layer = all_layers[0]
         root_layer.add_dictentry('Unclassified')
         probabilities_xgb = root_layer.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
@@ -331,26 +331,35 @@ def prediction2(val_normexpr, object_paths):
         f.write(all_cellnames[i])
         f.write(',')
         f.write(root_layer.labeldict[predictions_xgb[0]])
-        
         search_str = root_layer.labeldict[predictions_xgb[0]]
         del root_layer.labeldict[len(root_layer.labeldict)-1]
-        while(True):
-            curr_layer = find_layer(all_layers, search_str)
-            if curr_layer is not None:
-                curr_layer.add_dictentry('Unclassified')
-                probabilities_xgb = curr_layer.xgbmodel.predict(d_test)
+
+        if search_str == 'Cardiomyocytes':
+            cm_layer = all_layers[1]
+            cm_layer.add_dictentry('Unclassified')
+            probabilities_xgb = cm_layer.xgbmodel.predict(d_test)
+            predictions_xgb = probabilities_xgb.argmax(axis=1)
+            if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
+                predictions_xgb[0] = len(cm_layer.labeldict)-1
+            f.write(',')
+            f.write(cm_layer.labeldict[predictions_xgb[0]])
+            search_str = cm_layer.labeldict[predictions_xgb[0]]
+            del cm_layer.labeldict[len(cm_layer.labeldict)-1]
+
+            if search_str == 'Ventricular CM':
+                vent_layer = all_layers[2]
+                vent_layer.add_dictentry('Unclassified')
+                probabilities_xgb = vent_layer.xgbmodel.predict(d_test)
                 predictions_xgb = probabilities_xgb.argmax(axis=1)
                 if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
-                    predictions_xgb[0] = len(curr_layer.labeldict)-1
+                    predictions_xgb[0] = len(vent_layer.labeldict)-1
                 f.write(',')
-                f.write(curr_layer.labeldict[predictions_xgb[0]])
-                search_str = curr_layer.labeldict[predictions_xgb[0]]
-                del curr_layer.labeldict[len(curr_layer.labeldict)-1]
-            else:
-                break
+                f.write(vent_layer.labeldict[predictions_xgb[0]])
+                search_str = vent_layer.labeldict[predictions_xgb[0]]
+                del vent_layer.labeldict[len(vent_layer.labeldict)-1]
         f.write('\n')
     f.close()
-    
+
     print('Prediction Complete')
     os.chdir('..') # return to cellpy directory
     path = os.getcwd()
@@ -379,7 +388,7 @@ def reorder_pickle(csvpath, featurenames):
     norm_express = norm_express.T
     print(norm_express.T.duplicated().any())
     print ('Training Data # of  genes: ' + str(len(featurenames)))
-    
+
     ## Manually reorder columns according to training data index
     # Reorder overlapping genes, remove genes not in training data
     origfeat = list(norm_express)
@@ -463,7 +472,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
 #                      outputting final model for validation
 # Keeps track of all outputted files, stores paths and names in instance variables
 class Layer:
-    
+
     # level is the column of the metadata file in which the name of the layer appears
     # xgbmodel is a trained XGBoost classifier object
     # cvmetrics, finalmetrics, cfm, pr are path names to those files
@@ -482,16 +491,16 @@ class Layer:
         self.roc = []
         self.pr = None
         self.pickle = self.name + '_object.pkl'
-    
+
     def __hash__(self):
         return hash(self.name)
-    
+
     def __eq__(self, layer2):
         return self.name==layer2.name
-    
+
     def __repr__(self):
         return "<Layer: '%s', Level: %s, labeldict: %s, Trained: %s>" % (self.name, self.level, self.labeldict, self.trained())
-    
+
     def __str__(self):
         return_str = 'Object: ' + self.pickle + '\n'
         return_str += 'Layer: ' + self.name + '\n'
@@ -512,13 +521,13 @@ class Layer:
                 return_str += 'All Combined ROC Curves: ' + self.roc[2] + '\n'
                 return_str += 'Precision-Recall Curves: ' + self.pr + '\n'
         return return_str
-    
+
     def finetuned(self):
         return self.finetuning is not None
-    
+
     def trained(self):
         return self.xgbmodel is not None
-    
+
     # Adds a value to the label dictionary if it is not already present
     # Utility function of fill_dict
     def add_dictentry(self, value):
@@ -553,7 +562,7 @@ class Layer:
             colsample_bytree_temp = round(random.triangular(0.01,1,0.5),1)
             params = {'objective': 'multi:softprob', 'eta': eta_temp, 'max_depth': max_depth_temp, 'subsample': subsample_temp,
                     'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
-    
+
             mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
             f.write(str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ',')
             f.write(output_string + '\n')
@@ -570,12 +579,12 @@ class Layer:
     # Only for finetuning!
     def xgboost_model_shortver(self, X_tr, X_test, Y_tr, Y_test, params):
         params['num_class'] = len(self.labeldict)
-    
+
         d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
         model = xgb.train(params, d_tr, 20, verbose_eval=10)
         d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
         probabilities_xgb = model.predict(d_test)
-    
+
         returned_str = ''
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         cm = confusion_matrix(Y_test, predictions_xgb)
@@ -583,8 +592,8 @@ class Layer:
         mae = 1-sum(cm.diagonal())/len(cm.diagonal())
         returned_str = ','.join(map(str, cm.diagonal())) + ',' + str(mae)
         return mae, returned_str
-    
-    
+
+
     # Trains one layer in the classification
     # Trains XGBoost for a layer of classification given parameters
     # Splits data according to user-provided testsplit
@@ -594,7 +603,7 @@ class Layer:
     # Conducts feature ranking with SHAP if instructed by user on full final model
     def train_layer(self, normexprpkl, metadatacsv, params, testsplit, rejectcutoffs):
         params['num_class'] = len(self.labeldict)
-    
+
         if testsplit is not None:
             # 10-fold CV on (1-testsplit)% of data
             X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames = self.read_data(normexprpkl, metadatacsv, testsplit)
@@ -609,7 +618,7 @@ class Layer:
                 self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
                 self.model_metrics('cv', rejectcutoffs[1], X_valid, Y_valid)
                 self.cvmetrics = self.name + '_cvmetrics.txt'
-        
+
             # 90% model, 10% testing
             d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
             temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
@@ -627,18 +636,18 @@ class Layer:
             self.roc.append(self.name + '_allroc.svg')
             self.pr_curves(X_test, Y_test)
             self.pr = self.name + '_allpr.svg'
-    
+
         # skip cross validation and metric calculations
         if testsplit is None:
             X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv)
-        
+
         # final 100% model
         d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(path + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
-    
-    
+
+
     # Outputs predictions of the 90% model on the 10% test set in a given dataset
     # 1 csv file outputted for each rejection cutoff in the list rejectioncutoffs
     # A cutoff of 0.5 means the probability of the label must be >=0.5 for a prediction to be called
@@ -683,7 +692,7 @@ class Layer:
         if frsplit != 1:
             norm_express = train_test_split(norm_express, labels, test_size=frsplit,
                                             random_state=42, shuffle = True, stratify = labels[labelcolumn])[1]
-    
+
         model = self.xgbmodel
         model_bytearray = model.save_raw()[4:]
         model.save_raw = lambda: model_bytearray
@@ -698,17 +707,17 @@ class Layer:
             plt.savefig(path + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
             #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
             plt.clf()
-        
+
         vals = np.abs(shap_values).mean(0)
         feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['Gene','Feature Importance Value'])
         feature_importance.sort_values(by=['Feature Importance Value'], ascending=False, inplace=True)
         feature_importance.to_csv(path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
-        
+
         print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
         for i in range(len(self.labeldict)):
             print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
         print('Full Feature Importance List: ' + self.name + '_featureimportances.csv')
-    
+
 
     # Reads the normalized gene expression data into a norm_expr dataframe
     # Reads the specified column in the metadata csv into a label dataframe
@@ -724,7 +733,7 @@ class Layer:
         global feature_names
         feature_names = list(norm_express)
         print(norm_express.shape)
-        
+
         # If validation w/o metadata, metadata not provided, return all data w/o subsetting
         if metadatacsv is None:
             X = norm_express.values
@@ -735,19 +744,19 @@ class Layer:
             all_cellnames = all_cellnames.ravel()
             Y = None
             return X, Y, all_cellnames
-        
+
         tp = pd.read_csv(metadatacsv, iterator=True, chunksize=1000)
         labels = pd.concat(tp, ignore_index=True)
         labels.set_index('Unnamed: 0', inplace=True)
         labels.index.names = [None]
-    
+
         # Only root level will have no subsetcolumn, all other levels require subsetting
         # self.level is one less than what user sees since index is dropped above
         metadata_columns = list(labels.columns.values)
         labelcolumn = metadata_columns[self.level]
         subsetcolumn = metadata_columns[self.level-1] if self.level > 0 else None
         subsetcriterium = self.name
-    
+
         # Filter out cells if subsetting necessary, keep only data from given criterium
         if subsetcolumn != None:
             # Reindex norm_express and labels based on cell names in given criterium
@@ -762,7 +771,7 @@ class Layer:
         print (labels[labelcolumn].value_counts())
         for i in range(len(self.labeldict)):
             labels = labels.replace(self.labeldict[i],i)
-        
+
         # If validation with metadata, testsplit not provided, return all data w/o train test split
         if testsplit is None:
             X = norm_express.values
@@ -773,9 +782,9 @@ class Layer:
             all_cellnames = all_cellnames.ravel()
             Y = labels[labelcolumn].values
             return X, Y, all_cellnames
-        
+
         X = norm_express.values
-        
+
         # Get cell names in 10% test set - make cell names into a new column to save in a list
         labels.index.name = 'cells'
         labels.reset_index(inplace=True)
@@ -794,8 +803,8 @@ class Layer:
         X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True, stratify = Y)
         print('Training Samples: ' + str(len(X_tr)) + ', Testing Samples: ' + str(len(X_test)))
         return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames;
-    
-    
+
+
     # Calculates metrics of the Layer model on a provided test set and outputs it in a file
     # cv_final_val is a naming string to differentiate between cv, final, and validation metrics
     def model_metrics(self, cv_final_val, rejectcutoff, X_test, Y_test):
@@ -811,8 +820,8 @@ class Layer:
         with open(path + self.name + '_' + cv_final_val + 'metrics.txt', 'a+') as f:
             print(metrics, file=f)
         del self.labeldict[len(self.labeldict)-1]
-    
-    
+
+
     # Outputs predictions of the Layer model on a provided test set
     # Adds a key value pair in the labeldict for an unclassified class, removes it when completed
     # 1 csv file outputted for each rejection cutoff in the list rejectioncutoffs
@@ -853,8 +862,8 @@ class Layer:
                 f.write('\n')
             f.close()
         del self.labeldict[len(self.labeldict)-1]
-    
-    
+
+
     # Outputs a confusion matrix of the Layer model's results on a provided test set
     # train_val is a naming string to differentiate between train/test predictions and validation predictions
     def cfsn_mtx(self, train_val, rejectcutoff, X_test, Y_test):
@@ -868,7 +877,7 @@ class Layer:
         cm = confusion_matrix(Y_test, predictions_xgb)
         print(cm)
         del self.labeldict[len(self.labeldict)-1]
-        
+
         for i in range(len(predictions_xgb)-1, -1, -1):
             if predictions_xgb[i] == len(self.labeldict):
                 predictions_xgb = np.delete(predictions_xgb, i)
@@ -884,13 +893,13 @@ class Layer:
         tick_marks = np.arange(len(classnames))
         plt.xticks(tick_marks, classnames, rotation=45)
         plt.yticks(tick_marks, classnames)
-    
+
         thresh = cm_removed.max() / 2.
         for i, j in itertools.product(range(cm_removed.shape[0]), range(cm_removed.shape[1])):
             plt.text(j, i, '%0.3f' % cm_removed[i,j] if cm_removed[i,j] > 0 else 0,
                 horizontalalignment='center', verticalalignment='center',
                 color='white' if cm_removed[i,j] > thresh else 'black', fontsize=6)
-    
+
         plt.tight_layout()
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
@@ -907,12 +916,12 @@ class Layer:
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
-    
+
         # One hot encode Y_test and predictions arrays
         y_test = np.zeros((Y_test.size, Y_test.max()+1))
         y_test[np.arange(Y_test.size),Y_test] = 1
         y_score = probabilities_xgb
-    
+
         # Compute ROC curve and ROC area for each class
         fpr = dict()
         tpr = dict()
@@ -920,34 +929,34 @@ class Layer:
         for i in range(n_classes):
             fpr[i], tpr[i], _ = roc_curve(y_test[:, i], y_score[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
-    
+
         # Compute micro-average ROC curve and ROC area
         fpr["micro"], tpr["micro"], _ = roc_curve(y_test.ravel(), y_score.ravel())
         roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
-    
+
         # Compute macro-average ROC curve and ROC area
-    
+
         # First aggregate all false positive rates
         all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
-    
+
         # Then interpolate all ROC curves at this points
         mean_tpr = np.zeros_like(all_fpr)
         for i in range(n_classes):
             mean_tpr += interp(all_fpr, fpr[i], tpr[i])
-    
+
         # Finally average it and compute AUC
         mean_tpr /= n_classes
         fpr["macro"] = all_fpr
         tpr["macro"] = mean_tpr
         roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
-    
+
         # Plot micro/macro ROC curves
         plt.figure()
         plt.plot(fpr["micro"], tpr["micro"],
                  label='micro-average ROC curve (area = {0:0.2f})'
                        ''.format(roc_auc["micro"]),
                  color='deeppink', linestyle=':', linewidth=4)
-    
+
         plt.plot(fpr["macro"], tpr["macro"],
                  label='macro-average ROC curve (area = {0:0.2f})'
                        ''.format(roc_auc["macro"]),
@@ -961,7 +970,7 @@ class Layer:
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_miacroroc.svg')
         plt.clf()
-    
+
         # Plot class ROC curves
         plt.figure()
         for i in range(n_classes):
@@ -977,7 +986,7 @@ class Layer:
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_classroc.svg')
         plt.clf()
-    
+
         # Plot all ROC curves
         plt.figure()
         for i in range(n_classes):
@@ -1001,8 +1010,8 @@ class Layer:
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_allroc.svg')
         plt.clf()
-    
-    
+
+
     # Creates precision-recall curves for the Layer model on a provided test set
     # Calculates curves using probability values and thresholds
     # Outputs 1 figure: per class PR curvs and a micro PR curve
@@ -1011,12 +1020,12 @@ class Layer:
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
-    
+
         # One hot encode Y_test and predictions arrays
         y_test = np.zeros((Y_test.size, Y_test.max()+1))
         y_test[np.arange(Y_test.size),Y_test] = 1
         y_score = probabilities_xgb
-    
+
         # Compute precision and recall for each class
         precision = dict()
         recall = dict()
@@ -1024,11 +1033,11 @@ class Layer:
         for i in range(n_classes):
             precision[i], recall[i], _ = precision_recall_curve(y_test[:, i], y_score[:, i])
             average_precision[i] = average_precision_score(y_test[:, i], y_score[:, i])
-    
+
         # Compute micro-average precision and recall
         precision["micro"], recall["micro"], _ = precision_recall_curve(y_test.ravel(), y_score.ravel())
         average_precision["micro"] = average_precision_score(y_test, y_score, average="micro")
-    
+
         # Plot micro + class PR curves
         plt.figure()
         for i in range(n_classes):
@@ -1075,11 +1084,11 @@ def main():
     # 5.  feature ranking
     #       (runMOde = featureRankingOne, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
     time_start = time.perf_counter()
-    
+
     # All variables used for training and prediction set to None
-    global path, path_cellpy, rejection_cutoff
+    global path, path_cda, rejection_cutoff
     path = os.getcwd()
-    path_cellpy = os.getcwd() + '/CellPy'
+    path_cda = os.getcwd()
     user_train = False
     user_predict1 = False
     user_predict2 = False
@@ -1095,7 +1104,7 @@ def main():
     cardiac_dev = False
     time_point = None
     frsplit = None
-    
+
     ## Command Line Interface
     # runMode must be 'trainAll', 'predictOne', 'predictAll', or 'featureRankingOne'
     # trainNormExpr, labelInfo, trainMetadata are paths to their respective training files
@@ -1146,13 +1155,13 @@ def main():
             time_point = float(value)
         if name in ['--featureRankingSplit']:
             frsplit = float(value)
-    
+
     # Check user provided variables follow an above cellpy pathway
     passed_options = check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                                         rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, cardiac_dev, time_point, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
-    
+
     # Create cellpy_results directory with timestamp
     newdir = 'cellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
     path = os.path.join(path, newdir)
@@ -1160,7 +1169,7 @@ def main():
         print('Created directory "cellpy_results" in cwdir: ' + path)
         os.mkdir(path)
     os.chdir(path)
-    
+
     # Check training files exist if training option called
     passed_train = None
     passed_predict = None
@@ -1175,27 +1184,27 @@ def main():
         passed_fr = check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit)
     if (passed_train is False) or (passed_predict is False) or (passed_fr is False):
         raise ValueError('see printed error log above')
-    
+
     # Initialize layer_paths if cardiacDevAtlas option is selected
     if cardiac_dev is True:
-        layer_paths = [path_cellpy + '/cardiacdevatlas_objects/Root_object.pkl',
-                       path_cellpy + '/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
+        layer_paths = [path_cda + '/CellPy-main/cardiacdevatlas_objects/Root_object.pkl',
+                       path_cda + '/CellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
         if time_point < 8:
             print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
-            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E7.75_object.pkl')
+            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E7.75_object.pkl')
         elif time_point < 9:
             print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
-            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E8.25_object.pkl')
+            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E8.25_object.pkl')
         elif time_point < 10:
             print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
-            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E9.25_object.pkl')
+            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E9.25_object.pkl')
         elif time_point < 12:
             print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
-            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E10.5_object.pkl')
+            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E10.5_object.pkl')
         else:
             print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
-            layer_paths.append(path_cellpy + '/cardiacdevatlas_objects/E13.5_object.pkl')
-        
+            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl')
+
     # If training option is called and feasible
     if user_train is True and passed_train is True:
         training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
