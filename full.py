@@ -30,7 +30,7 @@ import shap
 # Ensures given files satisfy one of the possible pathways provided by cellpy
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
-def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+def check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                        rejection_cutoff, val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, frsplit):
     passed = True
     if user_train is None:
@@ -57,14 +57,14 @@ def check_combinations(user_train, user_predict1, user_predict2, user_fr, train_
 
     # if the user selected the 'predictOne' or 'predictAll' options
     predict_list = [val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, rejection_cutoff]
-    if (user_predict1 is True) or (user_predict2 is True):
-        if val_metadata is not None and user_predict1 is True:
+    if (user_predictOne is True) or (user_predictAll is True):
+        if val_metadata is not None and user_predictOne is True:
             print('Independent prediction option with accuracy calculation selected')
-        elif val_metadata is not None and user_predict2 is True:
+        elif val_metadata is not None and user_predictAll is True:
             print('WARNING: Dependent prediction option does not conduct accuracy calculation, provided metadata file will not be used')
-        elif val_metadata is None and user_predict1 is True:
+        elif val_metadata is None and user_predictOne is True:
             print('Independent prediction option without accuracy calculation selected')
-        elif val_metadata is None and user_predict1 is True:
+        elif val_metadata is None and user_predictOne is True:
             print('Dependent prediction option selected')
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
@@ -256,18 +256,23 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
                        '/CellPy-main/cardiacdevatlas_objects/E8.25_object.pkl',
                        '/CellPy-main/cardiacdevatlas_objects/E9.25_object.pkl',
                        '/CellPy-main/cardiacdevatlas_objects/E10.5_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl']
-        for i in range(len(layer_paths)):
+                       '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl',
+                       '/CellPy-main/cardiacdevatlas_objects/featurenames.csv']
+        for i in range(len(layer_paths)-1):
             layer_path = layer_paths[i]
             if not os.path.exists(path_cda + layer_path):
                 print('ERROR: Current directory ' + path_cda + ' does not contain cardiac dev atlas object ' + layer_path)
                 passed = False
+        featurenames_path = layer_paths[len(layer_paths)-1]
+        if not os.path.exists(path_cda + featurenames_path):
+            print('ERROR: Current directory ' + path_cda + ' does not contain list of cardiac dev atlas feature names ' + featurenames_path)
+            passed = False
     return passed
 
 
 # Conducts prediction in specified layers separated into different folders by name
 # Creates directory 'predictionOne' in cellpy_results folder, defines 'Root' as topmost layer
-def prediction1(val_normexpr, val_metadata, object_paths):
+def predictionOne(val_normexpr, val_metadata, object_paths):
     global path
     path = os.path.join(path, 'predictionOne')
     os.mkdir(path)
@@ -291,7 +296,7 @@ def prediction1(val_normexpr, val_metadata, object_paths):
 
 # Conducts prediction in all layers in one folder
 # Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
-def prediction2(val_normexpr, object_paths):
+def predictionAll(val_normexpr, object_paths):
     global path
     path = os.path.join(path, 'predictionAll')
     os.mkdir(path)
@@ -301,6 +306,97 @@ def prediction2(val_normexpr, object_paths):
     all_layers = import_layers(object_paths)
     print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
+    reorder_pickle(val_normexpr, featurenames)
+    val_normexpr = val_normexpr[:-3] + 'pkl'
+
+    norm_express = pd.read_pickle(val_normexpr)
+    feature_names = list(norm_express)
+    print(norm_express.shape)
+    X = norm_express.values
+
+    X = norm_express.values
+    norm_express.index.name = 'cells'
+    norm_express.reset_index(inplace=True)
+    Y = norm_express.values
+    all_cellnames = Y[:,0]
+    all_cellnames = all_cellnames.ravel()
+    Y = None
+
+    f = open(path + 'predictionall_reject' + str(rejection_cutoff) + '.csv','w')
+    for i in range(len(all_cellnames)):
+        sample = np.array(X[i])#.reshape((-1,1))
+        sample = np.vstack((sample, np.zeros(len(feature_names))))
+        d_test = xgb.DMatrix(sample, feature_names=feature_names)
+        root_layer = find_layer(all_layers, 'Root')
+        root_layer.add_dictentry('Unclassified')
+        probabilities_xgb = root_layer.xgbmodel.predict(d_test)
+        predictions_xgb = probabilities_xgb.argmax(axis=1)
+        if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
+            predictions_xgb[0] = len(root_layer.labeldict)-1
+        f.write(all_cellnames[i])
+        f.write(',')
+        f.write(root_layer.labeldict[predictions_xgb[0]])
+
+        search_str = root_layer.labeldict[predictions_xgb[0]]
+        del root_layer.labeldict[len(root_layer.labeldict)-1]
+        while(True):
+            curr_layer = find_layer(all_layers, search_str)
+            if curr_layer is not None:
+                curr_layer.add_dictentry('Unclassified')
+                probabilities_xgb = curr_layer.xgbmodel.predict(d_test)
+                predictions_xgb = probabilities_xgb.argmax(axis=1)
+                if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
+                    predictions_xgb[0] = len(curr_layer.labeldict)-1
+                f.write(',')
+                f.write(curr_layer.labeldict[predictions_xgb[0]])
+                search_str = curr_layer.labeldict[predictions_xgb[0]]
+                del curr_layer.labeldict[len(curr_layer.labeldict)-1]
+            else:
+                break
+        f.write('\n')
+    f.close()
+
+    print('Prediction Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+
+
+# Conducts prediction in specified layers separated into different folders by name for the cardiac dev atlas
+# Creates directory 'predictionOne' in cellpy_results folder, defines 'Root' as topmost layer
+def predictionOneCDA(val_normexpr, val_metadata, object_paths):
+    global path
+    path = os.path.join(path, 'predictionOne')
+    os.mkdir(path)
+    os.chdir(path)
+    all_layers = import_layers(object_paths)
+    featurenames = open(path_cda + '/CellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
+    reorder_pickle(val_normexpr, featurenames)
+    val_normexpr = val_normexpr[:-3] + 'pkl'
+    for layer in all_layers:
+        path = os.path.join(path, layer.name.replace(' ', ''))
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
+        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
+        os.chdir('..') # return to prediction directory
+        path = os.getcwd()
+    print('Prediction Complete')
+    os.chdir('..') # return to cellpy directory
+    path = os.getcwd()
+
+
+# Conducts prediction in all layers in one folder for the cardiac dev atlas
+# Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
+def predictionAllCDA(val_normexpr, object_paths):
+    global path
+    path = os.path.join(path, 'predictionAll')
+    os.mkdir(path)
+    os.chdir(path)
+    path = path + '/'
+
+    all_layers = import_layers(object_paths)
+    print(all_layers)
+    featurenames = open(path_cda + '/CellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
 
@@ -1090,8 +1186,8 @@ def main():
     path = os.getcwd()
     path_cda = os.getcwd()
     user_train = False
-    user_predict1 = False
-    user_predict2 = False
+    user_predictOne = False
+    user_predictAll = False
     user_fr = False
     train_normexpr = None
     labelinfo = None
@@ -1127,9 +1223,9 @@ def main():
             if value == 'trainAll':
                 user_train = True
             elif value == 'predictOne':
-                user_predict1 = True
+                user_predictOne = True
             elif value == 'predictAll':
-                user_predict2 = True
+                user_predictAll = True
             elif value == 'featureRankingOne':
                 user_fr = True
         if name in ['--trainNormExpr']:
@@ -1157,7 +1253,7 @@ def main():
             frsplit = float(value)
 
     # Check user provided variables follow an above cellpy pathway
-    passed_options = check_combinations(user_train, user_predict1, user_predict2, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
+    passed_options = check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                                         rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, cardiac_dev, time_point, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
@@ -1177,7 +1273,7 @@ def main():
     if user_train is True:
         passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
     # Check prediction files exist if either of the prediction options is called
-    if (user_predict1 is True) or (user_predict2 is True):
+    if (user_predictOne is True) or (user_predictAll is True):
         passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths, time_point)
     # Check feature ranking files exist if feature ranking option called
     if user_fr is True:
@@ -1208,12 +1304,18 @@ def main():
     # If training option is called and feasible
     if user_train is True and passed_train is True:
         training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
-    # If prediction one option is called and feasible
-    if user_predict1 is True and passed_predict is True:
-        prediction1(pred_normexpr, pred_metadata, layer_paths)
-    # If prediction all option is called and feasible
-    if user_predict2 is True and passed_predict is True:
-        prediction2(pred_normexpr, layer_paths)
+    # If prediction one option is called on non-cardiacDevAtlas objects and feasible
+    if user_predictOne is True and passed_predict is True and cardiac_dev is False:
+        predictionOne(pred_normexpr, pred_metadata, layer_paths)
+    # If prediction all option is called on non-cardiacDevAtlas objects and feasible
+    if user_predictAll is True and passed_predict is True and cardiac_dev is False:
+        predictionAll(pred_normexpr, layer_paths)
+    # If prediction one option is called on cardiacDevAtlas objects and feasible
+    if user_predictOne is True and passed_predict is True and cardiac_dev is True:
+        predictionOneCDA(pred_normexpr, pred_metadata, layer_paths)
+    # If prediction all option is called on cardiacDevAtlas objects and feasible
+    if user_predictAll is True and passed_predict is True and cardiac_dev is True:
+        predictionAllCDA(pred_normexpr, layer_paths)
     # If feature ranking option is called and feasible
     if user_fr is True and passed_fr is True:
         featureranking(train_normexpr, train_metadata, layer_paths, frsplit)
