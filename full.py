@@ -131,7 +131,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     construct_tree(labelinfo, all_layers)
     print(all_layers)
     for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
+        path = os.path.join(path, alphanumeric(layer.name))
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -172,11 +172,13 @@ def construct_tree(labelinfo, all_layers):
 # Function of construct_tree, fills the vertical columns of the labeldata file
 def fill_data(labelinfo):
     labeldata = list(csv.reader(open(labelinfo, encoding='utf-8-sig')))
-    for i in range(1,len(labeldata)):
+    # Fill in all the gaps in column 1 (layer 1)
+    for i in range(1, len(labeldata)):
         if labeldata[i][0]=='':
             labeldata[i][0] = labeldata[i-1][0]
-    for i in range(1,len(labeldata)):
-        for j in range(1,len(labeldata[0])):
+    # Fill in gaps in remaining columns only if the cell 1 left equals the value of the cell 1 up and 1 left
+    for i in range(1, len(labeldata)):
+        for j in range(1, len(labeldata[0])):
             if labeldata[i][j]=='' and labeldata[i][j-1]==labeldata[i-1][j-1]:
                 labeldata[i][j] = labeldata[i-1][j]
     return labeldata
@@ -186,11 +188,11 @@ def fill_data(labelinfo):
 # Constructs the main list structure and initializes all Layer objects in it
 def fill_dict(labeldata, all_layers):
     for i in range(len(labeldata)):
-        # Fills the root dictionary
+        # Initializes the Root layer dictionary with labels in the first column of labeldata
         if find_layer(all_layers, labeldata[i][0]) is None:
             root_layer = find_layer(all_layers, 'Root')
             root_layer.add_dictentry(labeldata[i][0])
-        # Fills dictionaries in other layers given the existence of a leaf
+        # Fills dictionaries in layers j-1 given the existence of a label in column j
         for j in range(1,len(labeldata[0])):
             if labeldata[i][j]!='':
                 if find_layer(all_layers, labeldata[i][j-1]) is None:
@@ -221,7 +223,7 @@ def training_summary(all_layers):
 # Exports all the trained Layers as pickle files
 def export_layers(all_layers):
     for layer in all_layers:
-        with open(path + layer.name.replace(' ', '') + '_object.pkl', 'wb') as output:
+        with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
             pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
@@ -282,7 +284,7 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
     for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
+        path = os.path.join(path, alphanumeric(layer.name))
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -373,7 +375,7 @@ def predictionOneCDA(val_normexpr, val_metadata, object_paths):
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
     for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
+        path = os.path.join(path, alphanumeric(layer.name))
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -549,7 +551,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     train_normexpr = train_normexpr[:-3] + 'pkl'
     all_layers = import_layers(object_paths)
     for layer in all_layers:
-        path = os.path.join(path, layer.name.replace(' ', ''))
+        path = os.path.join(path, alphanumeric(layer.name))
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -559,6 +561,12 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     print('Feature Ranking Complete')
     os.chdir('..') # return to cellpy directory
     path = os.getcwd()
+
+
+def alphanumeric(str):
+    temparr = list([val for val in str if val.isalpha() or val.isnumeric()])
+    cleanstr = ''.join(temparr)
+    return cleanstr
 
 
 # Object for each layer of the model
@@ -800,7 +808,7 @@ class Layer:
         for i in range(len(self.labeldict)):
             shap.summary_plot(shap_values[i], norm_express, show=False)
             plt.tight_layout()
-            plt.savefig(path + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
+            plt.savefig(path + self.name + '_' + alphanumeric(self.labeldict[i]) + 'fr.svg')
             #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
             plt.clf()
 
@@ -811,7 +819,7 @@ class Layer:
 
         print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
         for i in range(len(self.labeldict)):
-            print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_class'+str(i)+self.labeldict[i]+'fr.svg')
+            print(self.name + '--' + list(self.labeldict.values())[i] + ' Feature Ranking: ' + self.name + '_' + alphanumeric(self.labeldict[i]) + 'fr.svg')
         print('Full Feature Importance List: ' + self.name + '_featureimportances.csv')
 
 
