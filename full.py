@@ -1180,7 +1180,7 @@ def main():
     # 3a. cardiac dev prediction w/ metadata
     #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths = cardiacDevAtlas, rejectionCutoff, timePoint)
     # 3b. cardiac dev prediction w/o metadata, each layer's prediction independent of predictions from other layers
-    #       (runMode = predictOne, predNormExpr, layerObjectPaths = cardiacDevAtlas, rejectionCutoff)
+    #       (runMode = predictOne, predNormExpr, layerObjectPaths = cardiacDevAtlas, rejectionCutoff, timePoint)
     # 4a. prediction w/o metadata, each layer's prediction influences next layer's prediction
     #       (runMode = predictAll, predNormExpr, layerObjectPaths, rejectionCutoff)
     # 4a. cardiac dev prediction w/o metadata, each layer's prediction influences next layer's prediction
