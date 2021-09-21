@@ -27,7 +27,7 @@ from sklearn.metrics import average_precision_score
 import shap
 
 
-# Ensures given files satisfy one of the possible pathways provided by cellpy
+# Ensures given files satisfy one of the possible pathways provided by devcellpy
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
 def check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
@@ -118,7 +118,7 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, re
 
 
 # Conducts training in all layers separated into different folders by name
-# Creates directory 'training' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'training' in devcellpy_results folder, defines 'Root' as topmost layer
 # Conducts finetuning on Root layer with 50 iterations
 def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
     global path
@@ -145,7 +145,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     training_summary(all_layers)
     export_layers(all_layers)
     print('Training Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
@@ -252,14 +252,14 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
         print('ERROR: Given timepoint must be a value between 7.5 and 14')
         passed = False
     else:
-        layer_paths = ['/CellPy-main/cardiacdevatlas_objects/Root_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E7.75_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E8.25_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E9.25_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E10.5_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl',
-                       '/CellPy-main/cardiacdevatlas_objects/featurenames.csv']
+        layer_paths = ['/DevCellPy-main/cardiacdevatlas_objects/Root_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/E7.75_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/E8.25_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/E9.25_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/E10.5_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/E13.5_object.pkl',
+                       '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv']
         for i in range(len(layer_paths)-1):
             layer_path = layer_paths[i]
             if not os.path.exists(path_cda + layer_path):
@@ -273,7 +273,7 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
 
 
 # Conducts prediction in specified layers separated into different folders by name
-# Creates directory 'predictionOne' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'predictionOne' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionOne(val_normexpr, val_metadata, object_paths):
     global path
     path = os.path.join(path, 'predictionOne')
@@ -292,12 +292,12 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
         os.chdir('..') # return to prediction directory
         path = os.getcwd()
     print('Prediction Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
 # Conducts prediction in all layers in one folder
-# Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'predictionAll' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionAll(val_normexpr, object_paths):
     global path
     path = os.path.join(path, 'predictionAll')
@@ -359,19 +359,19 @@ def predictionAll(val_normexpr, object_paths):
     f.close()
 
     print('Prediction Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
 # Conducts prediction in specified layers separated into different folders by name for the cardiac dev atlas
-# Creates directory 'predictionOne' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'predictionOne' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionOneCDA(val_normexpr, val_metadata, object_paths):
     global path
     path = os.path.join(path, 'predictionOne')
     os.mkdir(path)
     os.chdir(path)
     all_layers = import_layers(object_paths)
-    featurenames = open(path_cda + '/CellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
+    featurenames = open(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
     for layer in all_layers:
@@ -383,12 +383,12 @@ def predictionOneCDA(val_normexpr, val_metadata, object_paths):
         os.chdir('..') # return to prediction directory
         path = os.getcwd()
     print('Prediction Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
 # Conducts prediction in all layers in one folder for the cardiac dev atlas
-# Creates directory 'predictionAll' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'predictionAll' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionAllCDA(val_normexpr, object_paths):
     global path
     path = os.path.join(path, 'predictionAll')
@@ -398,7 +398,7 @@ def predictionAllCDA(val_normexpr, object_paths):
 
     all_layers = import_layers(object_paths)
     print(all_layers)
-    featurenames = open(path_cda + '/CellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
+    featurenames = open(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
 
@@ -459,7 +459,7 @@ def predictionAllCDA(val_normexpr, object_paths):
     f.close()
 
     print('Prediction Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
@@ -541,7 +541,7 @@ def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frspl
 
 
 # Conducts prediction in all layers separated into different folders by name
-# Creates directory 'prediction' in cellpy_results folder, defines 'Root' as topmost layer
+# Creates directory 'prediction' in devcellpy_results folder, defines 'Root' as topmost layer
 def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     global path
     path = os.path.join(path, 'featureranking')
@@ -559,7 +559,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
         os.chdir('..') # return to prediction directory
         path = os.getcwd()
     print('Feature Ranking Complete')
-    os.chdir('..') # return to cellpy directory
+    os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
@@ -1168,7 +1168,7 @@ class Layer:
 
 # Main function: reads in user input, selects a pathway, and trains / predicts
 def main():
-    ## CELLPY RUN OPTIONS
+    ## DEVCELLPY RUN OPTIONS
     # 1a. training w/ cross validation and metrics
     #       (runMode = trainAll, trainNormExpr, labelInfo, trainMetadata, testSplit, rejectionCutoff)
     # 1b. training w/o cross validation and metrics
@@ -1260,17 +1260,17 @@ def main():
         if name in ['--featureRankingSplit']:
             frsplit = float(value)
 
-    # Check user provided variables follow an above cellpy pathway
+    # Check user provided variables follow an above devcellpy pathway
     passed_options = check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
                                         rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, cardiac_dev, time_point, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
 
-    # Create cellpy_results directory with timestamp
-    newdir = 'cellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    # Create devcellpy_results directory with timestamp
+    newdir = 'devcellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
     path = os.path.join(path, newdir)
     if not os.path.isdir(path):
-        print('Created directory "cellpy_results" in cwdir: ' + path)
+        print('Created directory "devcellpy_results" in cwdir: ' + path)
         os.mkdir(path)
     os.chdir(path)
 
@@ -1291,23 +1291,23 @@ def main():
 
     # Initialize layer_paths if cardiacDevAtlas option is selected
     if cardiac_dev is True:
-        layer_paths = [path_cda + '/CellPy-main/cardiacdevatlas_objects/Root_object.pkl',
-                       path_cda + '/CellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
+        layer_paths = [path_cda + '/DevCellPy-main/cardiacdevatlas_objects/Root_object.pkl',
+                       path_cda + '/DevCellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
         if time_point < 8:
             print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
-            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E7.75_object.pkl')
+            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E7.75_object.pkl')
         elif time_point < 9:
             print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
-            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E8.25_object.pkl')
+            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E8.25_object.pkl')
         elif time_point < 10:
             print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
-            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E9.25_object.pkl')
+            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E9.25_object.pkl')
         elif time_point < 12:
             print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
-            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E10.5_object.pkl')
+            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E10.5_object.pkl')
         else:
             print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
-            layer_paths.append(path_cda + '/CellPy-main/cardiacdevatlas_objects/E13.5_object.pkl')
+            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E13.5_object.pkl')
 
     # If training option is called and feasible
     if user_train is True and passed_train is True:
