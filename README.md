@@ -18,7 +18,7 @@ https://github.com/devCellPy-Team/devCellPy/tree/main/Tutorial
 
 # Software requirements
 
-devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal or Command Prompt.
+devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal.
 NOTE: All Python and XGBoost versions must remain the same throughout usage of all training, predicting, and feature ranking options. Ex) If Python 3.7 is used to train a dataset, Python 3.7 must be used to predict a query dataset using the trained dataset.
 
 ### OS Requirements
