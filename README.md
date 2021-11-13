@@ -7,8 +7,10 @@ Given devCellPy's highly customizable classification scheme, users can input the
 We provide a comprehensive tutorial on devCellPy's installation and usage as well as overall concepts in its design in the tutorial folder of the devCellPy GitHub.
 
 
-
 # Installation Guide:
+
+devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal or Command Prompt.
+NOTE: All Python and XGBoost versions must remain the same throughout usage of all training, predicting, and feature ranking options. Ex) If Python 3.7 is used to train a dataset, Python 3.7 must be used to predict a query dataset using the trained dataset.
 
 ### Install from PyPi
 ```
