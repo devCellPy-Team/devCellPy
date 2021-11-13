@@ -48,7 +48,8 @@ sklearn
 shap
 ```
 
-
+# Installation Time:
+devCellPy should install within a few minutes on a "standard" computer supporting in-memory operations. 
 
 # Installation Guide:
 
