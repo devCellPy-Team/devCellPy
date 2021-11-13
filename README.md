@@ -14,7 +14,16 @@ https://github.com/devCellPy-Team/devCellPy/tree/main/Tutorial
 
 # System Requirements
 ## Hardware requirements
-`devcellpy` package requires
+`devcellpy` hardware requirements vary depending on the modes used by the user.
+
+### Train Mode Requirements:
+Computer running with a minimum of 64 GB of RAM is recommended to train large scale datasets. We recommend users consider using a high performance computing cluster for training on large datasets that require greater than 64 GB. 
+
+### Feature Ranking Mode Requirements: 
+Feature Ranking mode of devCellPy requires a minimum of 64 GB of RAM to run. We recommend users consider a high performance computing cluster for conducting feature ranking on large datasets. 
+
+### Prediction Model Requirements:
+Prediction of cell types using an already trained devCellPy prediction model can be run on a standard computer with a minimum of 8 GB RAM. 
 
 # Software requirements
 
