@@ -7,3 +7,10 @@ Given devCellPy's highly customizable classification scheme, users can input the
 We provide a comprehensive tutorial on devCellPy's installation and usage as well as overall concepts in its design in the tutorial folder of the devCellPy GitHub.
 
 
+
+# Installation Guide:
+
+### Install from PyPi
+```
+pip3 install devcellpy
+```
