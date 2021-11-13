@@ -7,7 +7,7 @@ Given devCellPy's highly customizable classification scheme, users can input the
 
 # Documenation
 The full documentation of devCellpy code is available on our github under: 
-https://github.com/devCellPy-Team/devCellPy/blob/main/devcellpy_full_documentation.py
+https://github.com/devCellPy-Team/devCellPy/blob/main/Tutorial/8.code.ipynb
 
 Full tutorial of devCellPy usage available under:
 https://github.com/devCellPy-Team/devCellPy/tree/main/Tutorial
