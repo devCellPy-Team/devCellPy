@@ -138,12 +138,13 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         if layer.name == 'Root': # root top layer
             parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
             print(parameters)
-        layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
+        if layer.name != skip:
+           layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
         path = os.getcwd()
     path = path + '/'
-    training_summary(all_layers)
     export_layers(all_layers)
+    training_summary(all_layers)
     print('Training Complete')
     os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
@@ -222,9 +223,13 @@ def training_summary(all_layers):
 
 # Exports all the trained Layers as pickle files
 def export_layers(all_layers):
+    tp_layer = find_layer(all_layers, skip)
     for layer in all_layers:
-        with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
-            pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
+        if layer.name != skip:
+            with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
+                if tp_layer != None and layer.name in tp_layer.labeldict.values():
+                    layer.name = tp_layer.name 
+                pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
@@ -1020,41 +1025,27 @@ class Layer:
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
-
-        # One hot encode Y_test and predictions arrays
         y_test = np.zeros((Y_test.size, Y_test.max()+1))
         y_test[np.arange(Y_test.size),Y_test] = 1
         y_score = probabilities_xgb
-
-        # Compute ROC curve and ROC area for each class
         fpr = dict()
         tpr = dict()
         roc_auc = dict()
         for i in range(n_classes):
             fpr[i], tpr[i], _ = roc_curve(y_test[:, i], y_score[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])
-
-        # Compute micro-average ROC curve and ROC area
         fpr["micro"], tpr["micro"], _ = roc_curve(y_test.ravel(), y_score.ravel())
         roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
 
-        # Compute macro-average ROC curve and ROC area
-
-        # First aggregate all false positive rates
         all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
-
-        # Then interpolate all ROC curves at this points
         mean_tpr = np.zeros_like(all_fpr)
         for i in range(n_classes):
             mean_tpr += interp(all_fpr, fpr[i], tpr[i])
-
-        # Finally average it and compute AUC
         mean_tpr /= n_classes
         fpr["macro"] = all_fpr
         tpr["macro"] = mean_tpr
         roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
 
-        # Plot micro/macro ROC curves
         plt.figure()
         plt.plot(fpr["micro"], tpr["micro"],
                  label='micro-average ROC curve (area = {0:0.2f})'
@@ -1074,8 +1065,6 @@ class Layer:
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_miacroroc.svg')
         plt.clf()
-
-        # Plot class ROC curves
         plt.figure()
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
@@ -1091,7 +1080,6 @@ class Layer:
         plt.savefig(path + self.name + '_classroc.svg')
         plt.clf()
 
-        # Plot all ROC curves
         plt.figure()
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
@@ -1124,25 +1112,18 @@ class Layer:
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
-
-        # One hot encode Y_test and predictions arrays
         y_test = np.zeros((Y_test.size, Y_test.max()+1))
         y_test[np.arange(Y_test.size),Y_test] = 1
         y_score = probabilities_xgb
-
-        # Compute precision and recall for each class
         precision = dict()
         recall = dict()
         average_precision = dict()
         for i in range(n_classes):
             precision[i], recall[i], _ = precision_recall_curve(y_test[:, i], y_score[:, i])
             average_precision[i] = average_precision_score(y_test[:, i], y_score[:, i])
-
-        # Compute micro-average precision and recall
         precision["micro"], recall["micro"], _ = precision_recall_curve(y_test.ravel(), y_score.ravel())
         average_precision["micro"] = average_precision_score(y_test, y_score, average="micro")
 
-        # Plot micro + class PR curves
         plt.figure()
         for i in range(n_classes):
             plt.plot(recall[i], precision[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
@@ -1170,9 +1151,9 @@ class Layer:
 def main():
     ## DEVCELLPY RUN OPTIONS
     # 1a. training w/ cross validation and metrics
-    #       (runMode = trainAll, trainNormExpr, labelInfo, trainMetadata, testSplit, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, skip, trainMetadata, testSplit, rejectionCutoff)
     # 1b. training w/o cross validation and metrics
-    #       (runMode = trainAll, trainNormExpr, labelInfo, trainMetadata, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, skip, trainMetadata, rejectionCutoff)
     # 2a. prediction w/ metadata
     #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
     # 2b. prediction w/o metadata, each layer's prediction independent of predictions from other layers
@@ -1199,6 +1180,7 @@ def main():
     user_fr = False
     train_normexpr = None
     labelinfo = None
+    skip = None
     train_metadata = None
     testsplit = None
     rejection_cutoff = None
@@ -1224,7 +1206,7 @@ def main():
     # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
-                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
+                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'skip=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
                          'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'timePoint=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
@@ -1240,6 +1222,8 @@ def main():
             train_normexpr = value
         if name in ['--labelInfo']:
             labelinfo = value
+        if name in ['--skip']:
+            skip = value
         if name in ['--trainMetadata']:
             train_metadata = value
         if name in ['--testSplit']:
