@@ -138,7 +138,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         if layer.name == 'Root': # root top layer
             parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
             print(parameters)
-        if layer.name != skip:
+        if skip != None and layer.name != skip:
            layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
         os.chdir('..') # return to training directory
         path = os.getcwd()
@@ -223,11 +223,12 @@ def training_summary(all_layers):
 
 # Exports all the trained Layers as pickle files
 def export_layers(all_layers):
-    tp_layer = find_layer(all_layers, skip)
+    if skip != None:
+        tp_layer = find_layer(all_layers, skip)
     for layer in all_layers:
-        if layer.name != skip:
+        if skip != None or layer.name != skip:
             with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
-                if tp_layer != None and layer.name in tp_layer.labeldict.values():
+                if skip != None and tp_layer != None and layer.name in tp_layer.labeldict.values():
                     layer.name = tp_layer.name 
                 pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
