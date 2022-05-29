@@ -131,17 +131,39 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     construct_tree(labelinfo, all_layers)
     print(all_layers)
     for layer in all_layers:
-        path = os.path.join(path, alphanumeric(layer.name))
-        os.mkdir(path)
-        os.chdir(path)
-        path = path + '/'
-        if layer.name == 'Root': # root top layer
-            parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
-            print(parameters)
-        if skip != None and layer.name != skip:
-           layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
-        os.chdir('..') # return to training directory
-        path = os.getcwd()
+        if skip == None or (skip != None and layer.name != skip):
+            path = os.path.join(path, alphanumeric(layer.name))
+            os.mkdir(path)
+            os.chdir(path)
+            path = path + '/'
+            if skip == None:
+                if layer.name == 'Root': # root top layer
+                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+                    print(parameters)
+                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
+            if skip != None and skip != 'Root' and layer.name != skip:
+                if layer.name == 'Root': # root top layer
+                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+                    print(parameters)
+                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
+            if skip != None and skip == 'Root' and layer.name != 'Root':
+                tp_layer = find_layer(all_layers, skip)
+                if tp_layer.inDict(layer.name):
+                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
+                    print(parameters)
+                    for child in list(layer.labeldict.values()):
+                        child_layer = find_layer(all_layers, child)
+                        if child_layer != None:
+                            child_layer.params = parameters
+                else:
+                    parameters = layer.params
+                    for child in list(layer.labeldict.values()):
+                        child_layer = find_layer(all_layers, child)
+                        if child_layer != None:
+                            child_layer.params = parameters
+                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
+            os.chdir('..') # return to training directory
+            path = os.getcwd()
     path = path + '/'
     export_layers(all_layers)
     training_summary(all_layers)
@@ -225,12 +247,14 @@ def training_summary(all_layers):
 def export_layers(all_layers):
     if skip != None:
         tp_layer = find_layer(all_layers, skip)
+        print(tp_layer)
     for layer in all_layers:
-        if skip != None or layer.name != skip:
-            with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
-                if skip != None and tp_layer != None and layer.name in tp_layer.labeldict.values():
-                    layer.name = tp_layer.name 
-                pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
+        if layer is not None:
+            if skip == None or (skip != None and layer.name != tp_layer.name):
+                with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
+                    if skip != None and tp_layer is not None and tp_layer.inDict(layer.name):
+                        layer.name = tp_layer.name 
+                    pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
 
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
@@ -588,7 +612,7 @@ class Layer:
     # cvmetrics, finalmetrics, cfm, pr are path names to those files
     # predictions, roc, fr are lists of path names
     def __init__(self, name, level, labeldict=None, xgbmodel=None, finetuning=None, cvmetrics=None,
-                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, pickle=None):
+                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, pickle=None, params=None):
         self.name = name
         self.level = level
         self.labeldict = {}
@@ -601,6 +625,7 @@ class Layer:
         self.roc = []
         self.pr = None
         self.pickle = self.name + '_object.pkl'
+        self.params = None
 
     def __hash__(self):
         return hash(self.name)
@@ -637,6 +662,9 @@ class Layer:
 
     def trained(self):
         return self.xgbmodel is not None
+
+    def inDict(self, value):
+        return value in list(self.labeldict.values())
 
     # Adds a value to the label dictionary if it is not already present
     # Utility function of fill_dict
@@ -1172,7 +1200,7 @@ def main():
     time_start = time.perf_counter()
 
     # All variables used for training and prediction set to None
-    global path, path_cda, rejection_cutoff
+    global path, path_cda, rejection_cutoff, skip
     path = os.getcwd()
     path_cda = os.getcwd()
     user_train = False
@@ -1207,7 +1235,7 @@ def main():
     # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
-                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'skip=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
+                        ['runMode=', 'trainNormExpr=', 'labelInfo=', 'timepointLayer=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
                          'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'timePoint=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
@@ -1223,7 +1251,7 @@ def main():
             train_normexpr = value
         if name in ['--labelInfo']:
             labelinfo = value
-        if name in ['--skip']:
+        if name in ['--timepointLayer']:
             skip = value
         if name in ['--trainMetadata']:
             train_metadata = value
