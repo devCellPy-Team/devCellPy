@@ -134,7 +134,11 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         os.chdir(path)
         path = path + '/'
         if skip == None or (skip != None and layer.name != skip):
-            parameters = layer.finetune(50, 30, train_normexpr, train_metadata)
+            if std_params is False:
+                parameters = layer.finetune(50, 30, train_normexpr, train_metadata)
+            else:
+                parameters = {'objective': 'multi:softprob', 'eta': 0.2, 'max_depth': 6, 'subsample': 0.5,
+                              'colsample_bytree': 0.5, 'eval_metric': 'merror', 'seed': 840}
             print(parameters)
             layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
             export_layer(layer, all_layers)
@@ -269,7 +273,7 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
     for layer in all_layers:
-        path = os.path.join(path, layer.path)
+        path = os.path.join(path, layer.name)
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -445,7 +449,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     train_normexpr = train_normexpr[:-3] + 'pkl'
     all_layers = import_layers(object_paths)
     for layer in all_layers:
-        path = os.path.join(path, layer.path)
+        path = os.path.join(path, layer.name)
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
@@ -552,7 +556,6 @@ class Layer:
         if testsplit is None:
             testsplit = 0.1
         X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, 0.5)
-        X_tr, X_test, Y_tr, Y_test = train_test_split(X_tr, Y_tr, test_size=testsplit, random_state=42, shuffle = True, stratify = Y_tr)
         min_mae = 100000000000000
         with open(path + self.name + '_finetuning.csv', 'w', encoding='UTF8', newline='') as f:
             writer = csv.writer(f)
@@ -1065,7 +1068,7 @@ def main():
     time_start = time.perf_counter()
 
     # All variables used for training and prediction set to None
-    global path, path_cda, rejection_cutoff, skip
+    global path, path_cda, rejection_cutoff, skip, std_params
     path = os.getcwd()
     path_cda = os.getcwd()
     user_train = False
@@ -1078,6 +1081,7 @@ def main():
     train_metadata = None
     testsplit = None
     rejection_cutoff = None
+    std_params = False
     pred_normexpr = None
     pred_metadata = None
     layer_paths = None
@@ -1089,13 +1093,14 @@ def main():
     # testSplit is a float between 0 and 1 denoting the percentage of data to holdout for testing
     #           if not provided, cross validation is skipped, 100% model trained w/o metrics
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
+    # stdParams is a boolean denoting whether or not to finetune or use automatic parameters
     # predNormExpr, predMetadata are paths to their respective prediction files
     # layerObjectPaths is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
     # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
                         ['runMode=', 'trainNormExpr=', 'labelInfo=', 'timepointLayer=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
-                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
+                         'stdParams=', 'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
             if value == 'trainAll':
@@ -1118,6 +1123,8 @@ def main():
             testsplit = float(value)
         if name in ['--rejectionCutoff']:
             rejection_cutoff = float(value)
+        if name in ['--stdParams']:
+            std_params = True
         if name in ['--predNormExpr']:
             pred_normexpr = value
         if name in ['--predMetadata']:
