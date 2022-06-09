@@ -31,7 +31,7 @@ import shap
 # Ensures user input for train or predict matches file inputs
 # Certain files must appear together for training and/or validation to proceed
 def check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
-                       rejection_cutoff, val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, frsplit):
+                       rejection_cutoff, val_normexpr, val_metadata, layer_paths, frsplit):
     passed = True
     if user_train is None:
         print('ERROR: Run mode must be provided to resume')
@@ -56,7 +56,7 @@ def check_combinations(user_train, user_predictOne, user_predictAll, user_fr, tr
             passed = False
 
     # if the user selected the 'predictOne' or 'predictAll' options
-    predict_list = [val_normexpr, val_metadata, layer_paths, cardiac_dev, time_point, rejection_cutoff]
+    predict_list = [val_normexpr, val_metadata, layer_paths, rejection_cutoff]
     if (user_predictOne is True) or (user_predictAll is True):
         if val_metadata is not None and user_predictOne is True:
             print('Independent prediction option with accuracy calculation selected')
@@ -69,13 +69,10 @@ def check_combinations(user_train, user_predictOne, user_predictAll, user_fr, tr
         if predict_list[0] is None:
             print('ERROR: Normalized expression matrix for prediction must be provided to resume')
             passed = False
-        if predict_list[2] is None and predict_list[3] is False:
+        if predict_list[2] is None:
             print('ERROR: Path names to Layer objects must be provided to resume')
             passed = False
-        if predict_list[3] is True and time_point is None:
-            print('ERROR: Cardiac dev atlas timepoint must be provided to resume')
-            passed = False
-        if predict_list[5] is None:
+        if predict_list[3] is None:
             print('ERROR: Rejection cutoff value must be provided to resume')
             passed = False
 
@@ -121,51 +118,29 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, re
 # Creates directory 'training' in devcellpy_results folder, defines 'Root' as topmost layer
 # Conducts finetuning on Root layer with 50 iterations
 def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
-    global path
-    path = os.path.join(path, 'training')
+    global path, orig_path
+    path = os.path.join(path, 'devcellpy_training_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    orig_path = path
     os.mkdir(path)
     os.chdir(path)
     csv2pkl(train_normexpr)
     train_normexpr = train_normexpr[:-3] + 'pkl'
-    all_layers = [Layer('Root', 0)]
+    all_layers = [Layer('Root', 0, 'Root')]
     construct_tree(labelinfo, all_layers)
     print(all_layers)
     for layer in all_layers:
+        path = os.path.join(path, layer.path)
+        os.mkdir(path)
+        os.chdir(path)
+        path = path + '/'
         if skip == None or (skip != None and layer.name != skip):
-            path = os.path.join(path, alphanumeric(layer.name))
-            os.mkdir(path)
-            os.chdir(path)
-            path = path + '/'
-            if skip == None:
-                if layer.name == 'Root': # root top layer
-                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
-                    print(parameters)
-                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
-            if skip != None and skip != 'Root' and layer.name != skip:
-                if layer.name == 'Root': # root top layer
-                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
-                    print(parameters)
-                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
-            if skip != None and skip == 'Root' and layer.name != 'Root':
-                tp_layer = find_layer(all_layers, skip)
-                if tp_layer.inDict(layer.name):
-                    parameters = layer.finetune(50, testsplit, train_normexpr, train_metadata)
-                    print(parameters)
-                    for child in list(layer.labeldict.values()):
-                        child_layer = find_layer(all_layers, child)
-                        if child_layer != None:
-                            child_layer.params = parameters
-                else:
-                    parameters = layer.params
-                    for child in list(layer.labeldict.values()):
-                        child_layer = find_layer(all_layers, child)
-                        if child_layer != None:
-                            child_layer.params = parameters
-                layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
-            os.chdir('..') # return to training directory
-            path = os.getcwd()
+            parameters = layer.finetune(50, 30, train_normexpr, train_metadata)
+            print(parameters)
+            layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
+            export_layer(layer, all_layers)
+        os.chdir(orig_path) # return to training directory
+        path = os.getcwd()
     path = path + '/'
-    export_layers(all_layers)
     training_summary(all_layers)
     print('Training Complete')
     os.chdir('..') # return to devcellpy directory
@@ -217,9 +192,13 @@ def fill_dict(labeldata, all_layers):
             root_layer.add_dictentry(labeldata[i][0])
         # Fills dictionaries in layers j-1 given the existence of a label in column j
         for j in range(1,len(labeldata[0])):
-            if labeldata[i][j]!='':
+            if labeldata[i][j] != '':
                 if find_layer(all_layers, labeldata[i][j-1]) is None:
-                    all_layers.append(Layer(labeldata[i][j-1], j))
+                    if j == 1: # prev column is label under Root
+                        all_layers.append(Layer(labeldata[i][j-1], j, 'Root/' + alphanumeric(labeldata[i][j-1])))
+                    else:
+                        prev_layer = find_layer(all_layers, labeldata[i][j-2])
+                        all_layers.append(Layer(labeldata[i][j-1], j, prev_layer.path + '/' + alphanumeric(labeldata[i][j-1])))
                 prev_layer = find_layer(all_layers, labeldata[i][j-1])
                 prev_layer.add_dictentry(labeldata[i][j])
             else:
@@ -234,6 +213,17 @@ def find_layer(all_layers, name):
     return None
 
 
+# Exports a trained Layer as a pickle file
+def export_layer(layer, all_layers):
+    if skip != None:
+        tp_layer = find_layer(all_layers, skip)
+    if layer is not None and layer.trained() is True:
+        with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
+            if skip != None and tp_layer is not None and tp_layer.inDict(layer.name):
+                layer.predictname = tp_layer.name 
+            pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
+
+
 # Summarizes and lists the path names of all the files created during training
 # Prints the summary of each Layer object
 def training_summary(all_layers):
@@ -243,22 +233,8 @@ def training_summary(all_layers):
         f.write('\n')
 
 
-# Exports all the trained Layers as pickle files
-def export_layers(all_layers):
-    if skip != None:
-        tp_layer = find_layer(all_layers, skip)
-        print(tp_layer)
-    for layer in all_layers:
-        if layer is not None:
-            if skip == None or (skip != None and layer.name != tp_layer.name):
-                with open(path + alphanumeric(layer.name) + '_object.pkl', 'wb') as output:
-                    if skip != None and tp_layer is not None and tp_layer.inDict(layer.name):
-                        layer.name = tp_layer.name 
-                    pickle.dump(layer, output, pickle.HIGHEST_PROTOCOL)
-
-
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
-def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
+def check_predictionfiles(val_normexpr, val_metadata, layer_paths):
     passed = True
     if not os.path.exists(val_normexpr):
         print('ERROR: Given validation normalized expression data file for prediction does not exist')
@@ -267,46 +243,25 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths, time_point):
         print('ERROR: Given validation metadata file for prediction does not exist')
         passed = False
     # check all layer paths are objects and contain a trained xgb model
-    if time_point is None:
-        for i in range(len(layer_paths)):
-            layer_path = layer_paths[i]
-            if not os.path.exists(layer_path):
-                print('ERROR: Given Layer object ' + layer_path + ' does not exist')
-                passed = False
-            else:
-                layer = pd.read_pickle(layer_path)
-                if layer.trained() is False:
-                    print('ERROR: Given Layer object ' + layer_path + ' is not trained')
-                    passed = False
-    elif time_point > 14 or time_point < 7.5:
-        print('ERROR: Given timepoint must be a value between 7.5 and 14')
-        passed = False
-    else:
-        layer_paths = ['/DevCellPy-main/cardiacdevatlas_objects/Root_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/E7.75_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/E8.25_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/E9.25_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/E10.5_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/E13.5_object.pkl',
-                       '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv']
-        for i in range(len(layer_paths)-1):
-            layer_path = layer_paths[i]
-            if not os.path.exists(path_cda + layer_path):
-                print('ERROR: Current directory ' + path_cda + ' does not contain cardiac dev atlas object ' + layer_path)
-                passed = False
-        featurenames_path = layer_paths[len(layer_paths)-1]
-        if not os.path.exists(path_cda + featurenames_path):
-            print('ERROR: Current directory ' + path_cda + ' does not contain list of cardiac dev atlas feature names ' + featurenames_path)
+    for i in range(len(layer_paths)):
+        layer_path = layer_paths[i]
+        if not os.path.exists(layer_path):
+            print('ERROR: Given Layer object ' + layer_path + ' does not exist')
             passed = False
+        else:
+            layer = pd.read_pickle(layer_path)
+            if layer.trained() is False:
+                print('ERROR: Given Layer object ' + layer_path + ' is not trained')
+                passed = False
     return passed
 
 
 # Conducts prediction in specified layers separated into different folders by name
 # Creates directory 'predictionOne' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionOne(val_normexpr, val_metadata, object_paths):
-    global path
-    path = os.path.join(path, 'predictionOne')
+    global path, orig_path
+    path = os.path.join(path, 'devcellpy_predictOne_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    orig_path = path
     os.mkdir(path)
     os.chdir(path)
     all_layers = import_layers(object_paths)
@@ -314,12 +269,12 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     reorder_pickle(val_normexpr, featurenames)
     val_normexpr = val_normexpr[:-3] + 'pkl'
     for layer in all_layers:
-        path = os.path.join(path, alphanumeric(layer.name))
+        path = os.path.join(path, layer.path)
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
         layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
-        os.chdir('..') # return to prediction directory
+        os.chdir(orig_path) # return to prediction directory
         path = os.getcwd()
     print('Prediction Complete')
     os.chdir('..') # return to devcellpy directory
@@ -330,7 +285,7 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
 # Creates directory 'predictionAll' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionAll(val_normexpr, object_paths):
     global path
-    path = os.path.join(path, 'predictionAll')
+    path = os.path.join(path, 'devcellpy_predictAll_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
     os.mkdir(path)
     os.chdir(path)
     path = path + '/'
@@ -359,7 +314,7 @@ def predictionAll(val_normexpr, object_paths):
         sample = np.array(X[i])#.reshape((-1,1))
         sample = np.vstack((sample, np.zeros(len(feature_names))))
         d_test = xgb.DMatrix(sample, feature_names=feature_names)
-        root_layer = find_layer(all_layers, 'Root')
+        root_layer = find_predictlayer(all_layers, 'Root')
         root_layer.add_dictentry('Unclassified')
         probabilities_xgb = root_layer.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
@@ -372,7 +327,7 @@ def predictionAll(val_normexpr, object_paths):
         search_str = root_layer.labeldict[predictions_xgb[0]]
         del root_layer.labeldict[len(root_layer.labeldict)-1]
         while(True):
-            curr_layer = find_layer(all_layers, search_str)
+            curr_layer = find_predictlayer(all_layers, search_str)
             if curr_layer is not None:
                 curr_layer.add_dictentry('Unclassified')
                 probabilities_xgb = curr_layer.xgbmodel.predict(d_test)
@@ -385,106 +340,6 @@ def predictionAll(val_normexpr, object_paths):
                 del curr_layer.labeldict[len(curr_layer.labeldict)-1]
             else:
                 break
-        f.write('\n')
-    f.close()
-
-    print('Prediction Complete')
-    os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()
-
-
-# Conducts prediction in specified layers separated into different folders by name for the cardiac dev atlas
-# Creates directory 'predictionOne' in devcellpy_results folder, defines 'Root' as topmost layer
-def predictionOneCDA(val_normexpr, val_metadata, object_paths):
-    global path
-    path = os.path.join(path, 'predictionOne')
-    os.mkdir(path)
-    os.chdir(path)
-    all_layers = import_layers(object_paths)
-    featurenames = open(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
-    reorder_pickle(val_normexpr, featurenames)
-    val_normexpr = val_normexpr[:-3] + 'pkl'
-    for layer in all_layers:
-        path = os.path.join(path, alphanumeric(layer.name))
-        os.mkdir(path)
-        os.chdir(path)
-        path = path + '/'
-        layer.predict_layer([0, rejection_cutoff], val_normexpr, val_metadata)
-        os.chdir('..') # return to prediction directory
-        path = os.getcwd()
-    print('Prediction Complete')
-    os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()
-
-
-# Conducts prediction in all layers in one folder for the cardiac dev atlas
-# Creates directory 'predictionAll' in devcellpy_results folder, defines 'Root' as topmost layer
-def predictionAllCDA(val_normexpr, object_paths):
-    global path
-    path = os.path.join(path, 'predictionAll')
-    os.mkdir(path)
-    os.chdir(path)
-    path = path + '/'
-
-    all_layers = import_layers(object_paths)
-    print(all_layers)
-    featurenames = open(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/featurenames.csv', 'rt').read().split(',')
-    reorder_pickle(val_normexpr, featurenames)
-    val_normexpr = val_normexpr[:-3] + 'pkl'
-
-    norm_express = pd.read_pickle(val_normexpr)
-    feature_names = list(norm_express)
-    print(norm_express.shape)
-    X = norm_express.values
-
-    X = norm_express.values
-    norm_express.index.name = 'cells'
-    norm_express.reset_index(inplace=True)
-    Y = norm_express.values
-    all_cellnames = Y[:,0]
-    all_cellnames = all_cellnames.ravel()
-    Y = None
-
-    f = open(path + 'predictionall_reject' + str(rejection_cutoff) + '.csv','w')
-    for i in range(len(all_cellnames)):
-        sample = np.array(X[i])#.reshape((-1,1))
-        sample = np.vstack((sample, np.zeros(len(feature_names))))
-        d_test = xgb.DMatrix(sample, feature_names=feature_names)
-        root_layer = all_layers[0]
-        root_layer.add_dictentry('Unclassified')
-        probabilities_xgb = root_layer.xgbmodel.predict(d_test)
-        predictions_xgb = probabilities_xgb.argmax(axis=1)
-        if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
-            predictions_xgb[0] = len(root_layer.labeldict)-1
-        f.write(all_cellnames[i])
-        f.write(',')
-        f.write(root_layer.labeldict[predictions_xgb[0]])
-        search_str = root_layer.labeldict[predictions_xgb[0]]
-        del root_layer.labeldict[len(root_layer.labeldict)-1]
-
-        if search_str == 'Cardiomyocytes':
-            cm_layer = all_layers[1]
-            cm_layer.add_dictentry('Unclassified')
-            probabilities_xgb = cm_layer.xgbmodel.predict(d_test)
-            predictions_xgb = probabilities_xgb.argmax(axis=1)
-            if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
-                predictions_xgb[0] = len(cm_layer.labeldict)-1
-            f.write(',')
-            f.write(cm_layer.labeldict[predictions_xgb[0]])
-            search_str = cm_layer.labeldict[predictions_xgb[0]]
-            del cm_layer.labeldict[len(cm_layer.labeldict)-1]
-
-            if search_str == 'Ventricular CM':
-                vent_layer = all_layers[2]
-                vent_layer.add_dictentry('Unclassified')
-                probabilities_xgb = vent_layer.xgbmodel.predict(d_test)
-                predictions_xgb = probabilities_xgb.argmax(axis=1)
-                if probabilities_xgb[0,probabilities_xgb.argmax(axis=1)[0]] < rejection_cutoff:
-                    predictions_xgb[0] = len(vent_layer.labeldict)-1
-                f.write(',')
-                f.write(vent_layer.labeldict[predictions_xgb[0]])
-                search_str = vent_layer.labeldict[predictions_xgb[0]]
-                del vent_layer.labeldict[len(vent_layer.labeldict)-1]
         f.write('\n')
     f.close()
 
@@ -544,6 +399,14 @@ def reorder_pickle(csvpath, featurenames):
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
 
 
+# Utility function, searches a list of all_layers for a layer with the given name
+def find_predictlayer(all_layers, name):
+    for layer in all_layers:
+        if layer.predictname == name:
+            return layer
+    return None
+
+
 def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit):
     passed = True
     if not os.path.exists(train_normexpr):
@@ -573,26 +436,28 @@ def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frspl
 # Conducts prediction in all layers separated into different folders by name
 # Creates directory 'prediction' in devcellpy_results folder, defines 'Root' as topmost layer
 def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
-    global path
-    path = os.path.join(path, 'featureranking')
+    global path, orig_path
+    path = os.path.join(path, 'devcellpy_featureranking_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    orig_path = path
     os.mkdir(path)
     os.chdir(path)
     csv2pkl(train_normexpr)
     train_normexpr = train_normexpr[:-3] + 'pkl'
     all_layers = import_layers(object_paths)
     for layer in all_layers:
-        path = os.path.join(path, alphanumeric(layer.name))
+        path = os.path.join(path, layer.path)
         os.mkdir(path)
         os.chdir(path)
         path = path + '/'
         layer.featurerank_layer(train_normexpr, train_metadata, frsplit)
-        os.chdir('..') # return to prediction directory
+        os.chdir(orig_path) # return to prediction directory
         path = os.getcwd()
     print('Feature Ranking Complete')
     os.chdir('..') # return to devcellpy directory
     path = os.getcwd()
 
 
+# Remove non-alphanumeric characters from string
 def alphanumeric(str):
     temparr = list([val for val in str if val.isalpha() or val.isnumeric()])
     cleanstr = ''.join(temparr)
@@ -611,10 +476,11 @@ class Layer:
     # xgbmodel is a trained XGBoost classifier object
     # cvmetrics, finalmetrics, cfm, pr are path names to those files
     # predictions, roc, fr are lists of path names
-    def __init__(self, name, level, labeldict=None, xgbmodel=None, finetuning=None, cvmetrics=None,
-                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, pickle=None, params=None):
+    def __init__(self, name, level, path, labeldict=None, xgbmodel=None, finetuning=None, cvmetrics=None,
+                 finalmetrics=None, predictions=None, cfm=None, roc=None, pr=None, pickle=None):
         self.name = name
         self.level = level
+        self.path = path
         self.labeldict = {}
         self.xgbmodel = None
         self.finetuning = None
@@ -625,13 +491,13 @@ class Layer:
         self.roc = []
         self.pr = None
         self.pickle = self.name + '_object.pkl'
-        self.params = None
+        self.predictname = name
 
     def __hash__(self):
         return hash(self.name)
 
     def __eq__(self, layer2):
-        return self.name==layer2.name
+        return self.name==layer2.name and self.level==layer2.level
 
     def __repr__(self):
         return "<Layer: '%s', Level: %s, labeldict: %s, Trained: %s>" % (self.name, self.level, self.labeldict, self.trained())
@@ -685,28 +551,33 @@ class Layer:
         # If user skips cross validation, testsplit automatically set to 10% for finetuning
         if testsplit is None:
             testsplit = 0.1
-        X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, testsplit)
+        X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, 0.5)
+        X_tr, X_test, Y_tr, Y_test = train_test_split(X_tr, Y_tr, test_size=testsplit, random_state=42, shuffle = True, stratify = Y_tr)
         min_mae = 100000000000000
-        f = open(path + self.name + '_finetuning.csv', 'a+')
-        f.write('ETA,Max Depth,Subsample,Colsample by Tree,')
-        for i in range(len(self.labeldict)):
-            f.write(self.labeldict[i] + ' Accuracy')
-            f.write(',')
-        f.write('MAE\n')
-        for i in range(trials):
-            eta_temp = round(random.triangular(0,1,0.3),1)
-            max_depth_temp = round(random.triangular(4,8,6))
-            subsample_temp = round(random.triangular(0.01,1,0.5),1)
-            colsample_bytree_temp = round(random.triangular(0.01,1,0.5),1)
-            params = {'objective': 'multi:softprob', 'eta': eta_temp, 'max_depth': max_depth_temp, 'subsample': subsample_temp,
-                    'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
-
-            mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
-            f.write(str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ',')
-            f.write(output_string + '\n')
-            if mae < min_mae:
-                min_mae = mae
-                final_params = params
+        with open(path + self.name + '_finetuning.csv', 'w', encoding='UTF8', newline='') as f:
+            writer = csv.writer(f)
+            row = 'ETA,Max Depth,Subsample,Colsample by Tree,'
+            for i in range(len(self.labeldict)):
+                row += self.labeldict[i] + ' Accuracy,'
+            row += 'MAE'
+            print(row, file=f)
+            f.flush()
+            for i in range(trials):
+                print('Trial', i)
+                eta_temp = round(random.triangular(0,1,0.3),1)
+                max_depth_temp = round(random.triangular(4,8,6))
+                subsample_temp = round(random.triangular(0.01,1,0.5),1)
+                colsample_bytree_temp = round(random.triangular(0.01,1,0.5),1)
+                params = {'objective': 'multi:softprob', 'eta': eta_temp, 'max_depth': max_depth_temp, 'subsample': subsample_temp,
+                        'colsample_bytree': colsample_bytree_temp, 'eval_metric': 'merror', 'seed': 840}
+                mae, output_string = self.xgboost_model_shortver(X_tr, X_test, Y_tr, Y_test, params)
+                row = str(eta_temp) + ',' + str(max_depth_temp) + ',' + str(subsample_temp) + ',' + str(colsample_bytree_temp) + ','
+                row += output_string
+                print(row, file=f)
+                f.flush()
+                if mae < min_mae:
+                    min_mae = mae
+                    final_params = params
         print(final_params)
         self.finetuning = self.name + '_finetuning.csv'
         return final_params
@@ -940,7 +811,7 @@ class Layer:
         X, Y = shuffle(X, Y)
         X_tr, X_test, Y_tr, Y_test = train_test_split(X, Y, test_size=testsplit, random_state=42, shuffle = True, stratify = Y)
         print('Training Samples: ' + str(len(X_tr)) + ', Testing Samples: ' + str(len(X_test)))
-        return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames;
+        return X, Y, X_tr, X_test, Y_tr, Y_test, test_cellnames
 
 
     # Calculates metrics of the Layer model on a provided test set and outputs it in a file
@@ -1187,16 +1058,10 @@ def main():
     #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
     # 2b. prediction w/o metadata, each layer's prediction independent of predictions from other layers
     #       (runMode = predictOne, predNormExpr, layerObjectPaths, rejectionCutoff)
-    # 3a. cardiac dev prediction w/ metadata
-    #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths = cardiacDevAtlas, rejectionCutoff, timePoint)
-    # 3b. cardiac dev prediction w/o metadata, each layer's prediction independent of predictions from other layers
-    #       (runMode = predictOne, predNormExpr, layerObjectPaths = cardiacDevAtlas, rejectionCutoff, timePoint)
-    # 4a. prediction w/o metadata, each layer's prediction influences next layer's prediction
+    # 3. prediction w/o metadata, each layer's prediction influences next layer's prediction
     #       (runMode = predictAll, predNormExpr, layerObjectPaths, rejectionCutoff)
-    # 4a. cardiac dev prediction w/o metadata, each layer's prediction influences next layer's prediction
-    #       (runMode = predictAll, predNormExpr, layerObjectPaths = cardiacDevAtlas, rejectionCutoff, timePoint)
-    # 5.  feature ranking
-    #       (runMOde = featureRankingOne, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
+    # 4.  feature ranking
+    #       (runMode = featureRankingOne, trainNormExpr, trainMetadata, layerObjectPaths, featureRankingSplit)
     time_start = time.perf_counter()
 
     # All variables used for training and prediction set to None
@@ -1216,8 +1081,6 @@ def main():
     pred_normexpr = None
     pred_metadata = None
     layer_paths = None
-    cardiac_dev = False
-    time_point = None
     frsplit = None
 
     ## Command Line Interface
@@ -1228,15 +1091,11 @@ def main():
     # rejectionCutoff is a float between 0 and 1 denoting the minimum probability for a prediction to not be rejected
     # predNormExpr, predMetadata are paths to their respective prediction files
     # layerObjectPaths is a comma-separated list of paths to the Layer objects that the user wants to predict on the predNormExpr
-    #           if the user wishes to use the pretrained cardiac developmental cell atlas objects,
-    #           the option cardiacDevAtlas should be submitted for layerObjectPaths instead
-    # timePoint is only required if the cardiacDevAtlas option is selected for layerObjectPaths
-    #           should be between 7.5 and 14, the age of the cardiac cells in the normalized expression matrix
     # featureRankingSplit is a float between 0 and 1 denoting the percentage of data to calculate SHAP importances
     args = sys.argv[1:]
     options, args = getopt.getopt(args, '',
                         ['runMode=', 'trainNormExpr=', 'labelInfo=', 'timepointLayer=', 'trainMetadata=', 'testSplit=', 'rejectionCutoff=',
-                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'timePoint=', 'featureRankingSplit='])
+                         'predNormExpr=', 'predMetadata=', 'layerObjectPaths=', 'featureRankingSplit='])
     for name, value in options:
         if name in ['--runMode']:
             if value == 'trainAll':
@@ -1264,28 +1123,15 @@ def main():
         if name in ['--predMetadata']:
             pred_metadata = value
         if name in ['--layerObjectPaths']:
-            if value == 'cardiacDevAtlas':
-                cardiac_dev = True
-            else:
-                layer_paths = value.split(',')
-        if name in ['--timePoint']:
-            time_point = float(value)
+            layer_paths = value.split(',')
         if name in ['--featureRankingSplit']:
             frsplit = float(value)
 
     # Check user provided variables follow an above devcellpy pathway
     passed_options = check_combinations(user_train, user_predictOne, user_predictAll, user_fr, train_normexpr, labelinfo, train_metadata, testsplit,
-                                        rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, cardiac_dev, time_point, frsplit)
+                                        rejection_cutoff, pred_normexpr, pred_metadata, layer_paths, frsplit)
     if passed_options is False:
         raise ValueError('see printed error log above')
-
-    # Create devcellpy_results directory with timestamp
-    newdir = 'devcellpy_results_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    path = os.path.join(path, newdir)
-    if not os.path.isdir(path):
-        print('Created directory "devcellpy_results" in cwdir: ' + path)
-        os.mkdir(path)
-    os.chdir(path)
 
     # Check training files exist if training option called
     passed_train = None
@@ -1295,48 +1141,22 @@ def main():
         passed_train = check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
     # Check prediction files exist if either of the prediction options is called
     if (user_predictOne is True) or (user_predictAll is True):
-        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths, time_point)
+        passed_predict = check_predictionfiles(pred_normexpr, pred_metadata, layer_paths)
     # Check feature ranking files exist if feature ranking option called
     if user_fr is True:
         passed_fr = check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit)
     if (passed_train is False) or (passed_predict is False) or (passed_fr is False):
         raise ValueError('see printed error log above')
 
-    # Initialize layer_paths if cardiacDevAtlas option is selected
-    if cardiac_dev is True:
-        layer_paths = [path_cda + '/DevCellPy-main/cardiacdevatlas_objects/Root_object.pkl',
-                       path_cda + '/DevCellPy-main/cardiacdevatlas_objects/Cardiomyocytes_object.pkl']
-        if time_point < 8:
-            print('Ventricular cardiomyocyte model E7.75 will be used for prediction')
-            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E7.75_object.pkl')
-        elif time_point < 9:
-            print('Ventricular cardiomyocyte model E8.25 will be used for prediction')
-            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E8.25_object.pkl')
-        elif time_point < 10:
-            print('Ventricular cardiomyocyte model E9.25 will be used for prediction')
-            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E9.25_object.pkl')
-        elif time_point < 12:
-            print('Ventricular cardiomyocyte model E10.5 will be used for prediction')
-            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E10.5_object.pkl')
-        else:
-            print('Ventricular cardiomyocyte model E13.5 will be used for prediction')
-            layer_paths.append(path_cda + '/DevCellPy-main/cardiacdevatlas_objects/E13.5_object.pkl')
-
     # If training option is called and feasible
     if user_train is True and passed_train is True:
         training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff)
-    # If prediction one option is called on non-cardiacDevAtlas objects and feasible
-    if user_predictOne is True and passed_predict is True and cardiac_dev is False:
+    # If prediction one option is called and feasible
+    if user_predictOne is True and passed_predict is True:
         predictionOne(pred_normexpr, pred_metadata, layer_paths)
-    # If prediction all option is called on non-cardiacDevAtlas objects and feasible
-    if user_predictAll is True and passed_predict is True and cardiac_dev is False:
+    # If prediction all option is called and feasible
+    if user_predictAll is True and passed_predict is True:
         predictionAll(pred_normexpr, layer_paths)
-    # If prediction one option is called on cardiacDevAtlas objects and feasible
-    if user_predictOne is True and passed_predict is True and cardiac_dev is True:
-        predictionOneCDA(pred_normexpr, pred_metadata, layer_paths)
-    # If prediction all option is called on cardiacDevAtlas objects and feasible
-    if user_predictAll is True and passed_predict is True and cardiac_dev is True:
-        predictionAllCDA(pred_normexpr, layer_paths)
     # If feature ranking option is called and feasible
     if user_fr is True and passed_fr is True:
         featureranking(train_normexpr, train_metadata, layer_paths, frsplit)
