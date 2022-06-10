@@ -968,6 +968,7 @@ class Layer:
         plt.legend(loc="lower right")
         plt.savefig(path + self.name + '_miacroroc.svg')
         plt.clf()
+        
         plt.figure()
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i], color='#%06X' % random.randint(0, 0xFFFFFF), lw=lw,
