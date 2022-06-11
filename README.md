@@ -55,6 +55,7 @@ matplotlib.pyplot
 itertools
 sklearn
 shap
+scanpy
 ```
 
 # Installation Time:

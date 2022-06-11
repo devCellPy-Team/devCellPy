@@ -25,6 +25,7 @@ from sklearn.metrics import roc_curve, auc
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 import shap
+import scanpy as sc
 
 
 # Ensures given files satisfy one of the possible pathways provided by devcellpy
@@ -123,8 +124,14 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     orig_path = path
     os.mkdir(path)
     os.chdir(path)
-    csv2pkl(train_normexpr)
-    train_normexpr = train_normexpr[:-3] + 'pkl'
+    if train_normexpr[-3:] == 'csv':
+        csv2pkl(train_normexpr)
+        train_normexpr = train_normexpr[:-3] + 'pkl'
+    elif train_normexpr[-4:] == 'h5ad':
+        h5ad2pkl(train_nromexpr)
+        train_normexpr = train_normexpr[:-4] + 'pkl'
+    else:
+        raise ValueError('Format of normalized expression data file not recognized')
     all_layers = [Layer('Root', 0, 'Root')]
     construct_tree(labelinfo, all_layers)
     print(all_layers)
@@ -157,11 +164,18 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
 def csv2pkl(csvpath):
     tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
     norm_express = pd.concat(tp, ignore_index=True)
-    print (norm_express.head())
     norm_express.set_index('gene', inplace=True)
     norm_express.index.names = [None]
     norm_express = norm_express.T
+    print (norm_express.head())
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
+
+
+# Converts the Seurat h5ad object into a pkl
+def h5ad2pkl(h5adpath):
+    adata = sc.read_h5ad(h5adpath)
+    df = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
+    df.to_pickle(csvpath[:-4] + 'pkl')
 
 
 # Constructs a list of all Layer objects from a labelinfo file
@@ -445,8 +459,14 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     orig_path = path
     os.mkdir(path)
     os.chdir(path)
-    csv2pkl(train_normexpr)
-    train_normexpr = train_normexpr[:-3] + 'pkl'
+    if train_normexpr[-3:] == 'csv':
+        csv2pkl(train_normexpr)
+        train_normexpr = train_normexpr[:-3] + 'pkl'
+    elif train_normexpr[-4:] == 'h5ad':
+        h5ad2pkl(train_nromexpr)
+        train_normexpr = train_normexpr[:-4] + 'pkl'
+    else:
+        raise ValueError('Format of normalized expression data file not recognized')
     all_layers = import_layers(object_paths)
     for layer in all_layers:
         path = os.path.join(path, layer.name)
