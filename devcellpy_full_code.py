@@ -128,7 +128,7 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
         csv2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-3] + 'pkl'
     elif train_normexpr[-4:] == 'h5ad':
-        h5ad2pkl(train_nromexpr)
+        h5ad2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-4] + 'pkl'
     else:
         raise ValueError('Format of normalized expression data file not recognized')
@@ -175,7 +175,7 @@ def csv2pkl(csvpath):
 def h5ad2pkl(h5adpath):
     adata = sc.read_h5ad(h5adpath)
     df = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
-    df.to_pickle(csvpath[:-4] + 'pkl')
+    df.to_pickle(h5adpath[:-4] + 'pkl')
 
 
 # Constructs a list of all Layer objects from a labelinfo file
@@ -285,7 +285,10 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     all_layers = import_layers(object_paths)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    val_normexpr = val_normexpr[:-3] + 'pkl'
+    if train_normexpr[-3:] == 'csv':
+        val_normexpr = val_normexpr[:-3] + 'pkl'
+    elif train_normexpr[-4:] == 'h5ad':
+        val_normexpr = val_normexpr[:-4] + 'pkl'
     for layer in all_layers:
         path = os.path.join(path, layer.name)
         os.mkdir(path)
@@ -312,7 +315,10 @@ def predictionAll(val_normexpr, object_paths):
     print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    val_normexpr = val_normexpr[:-3] + 'pkl'
+    if train_normexpr[-3:] == 'csv':
+        val_normexpr = val_normexpr[:-3] + 'pkl'
+    elif train_normexpr[-4:] == 'h5ad':
+        val_normexpr = val_normexpr[:-4] + 'pkl'
 
     norm_express = pd.read_pickle(val_normexpr)
     feature_names = list(norm_express)
@@ -380,14 +386,25 @@ def import_layers(layer_paths):
 # First column name (cell A1) is 'gene'
 # Reorders the csv file to match the features in a given featurenames list
 # Returns path to the new pkl file
-def reorder_pickle(csvpath, featurenames):
-    tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
-    norm_express = pd.concat(tp, ignore_index=True)
-    print (norm_express.head())
-    norm_express.set_index('gene', inplace=True)
-    norm_express.index.names = [None]
-    norm_express = norm_express.T
-    print(norm_express.T.duplicated().any())
+def reorder_pickle(path, featurenames):
+    # Convert data into pickles
+    if train_normexpr[-3:] == 'csv':
+        csvpath = path
+        tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
+        norm_express = pd.concat(tp, ignore_index=True)
+        norm_express.set_index('gene', inplace=True)
+        norm_express.index.names = [None]
+        norm_express = norm_express.T
+        # print (norm_express.head())
+        # print(norm_express.T.duplicated().any())
+        norm_express.to_pickle(csvpath[:-3] + 'pkl')
+    elif train_normexpr[-4:] == 'h5ad':
+        h5adpath = path
+        adata = sc.read_h5ad(h5adpath)
+        norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
+        norm_express.to_pickle(h5adpath[:-4] + 'pkl')
+    else:
+        raise ValueError('Format of normalized expression data file not recognized')
     print ('Training Data # of  genes: ' + str(len(featurenames)))
 
     ## Manually reorder columns according to training data index
@@ -463,7 +480,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
         csv2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-3] + 'pkl'
     elif train_normexpr[-4:] == 'h5ad':
-        h5ad2pkl(train_nromexpr)
+        h5ad2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-4] + 'pkl'
     else:
         raise ValueError('Format of normalized expression data file not recognized')
@@ -1075,9 +1092,9 @@ class Layer:
 def main():
     ## DEVCELLPY RUN OPTIONS
     # 1a. training w/ cross validation and metrics
-    #       (runMode = trainAll, trainNormExpr, labelInfo, skip, trainMetadata, testSplit, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, timepointLayer, trainMetadata, testSplit, rejectionCutoff)
     # 1b. training w/o cross validation and metrics
-    #       (runMode = trainAll, trainNormExpr, labelInfo, skip, trainMetadata, rejectionCutoff)
+    #       (runMode = trainAll, trainNormExpr, labelInfo, timepointLayer, trainMetadata, rejectionCutoff)
     # 2a. prediction w/ metadata
     #       (runMode = predictOne, predNormExpr, predMetadata, layerObjectPaths, rejectionCutoff)
     # 2b. prediction w/o metadata, each layer's prediction independent of predictions from other layers
