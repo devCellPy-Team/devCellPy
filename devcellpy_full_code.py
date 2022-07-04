@@ -285,9 +285,9 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     all_layers = import_layers(object_paths)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    if train_normexpr[-3:] == 'csv':
+    if val_normexpr[-3:] == 'csv':
         val_normexpr = val_normexpr[:-3] + 'pkl'
-    elif train_normexpr[-4:] == 'h5ad':
+    elif val_normexpr[-4:] == 'h5ad':
         val_normexpr = val_normexpr[:-4] + 'pkl'
     for layer in all_layers:
         path = os.path.join(path, layer.name)
@@ -315,9 +315,9 @@ def predictionAll(val_normexpr, object_paths):
     print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    if train_normexpr[-3:] == 'csv':
+    if val_normexpr[-3:] == 'csv':
         val_normexpr = val_normexpr[:-3] + 'pkl'
-    elif train_normexpr[-4:] == 'h5ad':
+    elif val_normexpr[-4:] == 'h5ad':
         val_normexpr = val_normexpr[:-4] + 'pkl'
 
     norm_express = pd.read_pickle(val_normexpr)
