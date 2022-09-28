@@ -388,7 +388,7 @@ def import_layers(layer_paths):
 # Returns path to the new pkl file
 def reorder_pickle(path, featurenames):
     # Convert data into pickles
-    if train_normexpr[-3:] == 'csv':
+    if path[-3:] == 'csv':
         csvpath = path
         tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
         norm_express = pd.concat(tp, ignore_index=True)
@@ -398,7 +398,7 @@ def reorder_pickle(path, featurenames):
         # print (norm_express.head())
         # print(norm_express.T.duplicated().any())
         norm_express.to_pickle(csvpath[:-3] + 'pkl')
-    elif train_normexpr[-4:] == 'h5ad':
+    elif path[-4:] == 'h5ad':
         h5adpath = path
         adata = sc.read_h5ad(h5adpath)
         norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
