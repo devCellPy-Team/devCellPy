@@ -4,13 +4,11 @@ devCellPy is a Python package designed for hierarchical multilayered classificat
 
 Given devCellPy's highly customizable classification scheme, users can input the annotation hierarchy of their scRNA-seq datasets into devCellPy to guide the automatic classification and prediction of cells according to the provided hierarchy. devCellPy allows users to designate any identity at each layer of classification and is not constrained by cell type——for example, assigning timepoint as one of the annotation layers allows for cell identity predictions at that layer to be conditioned on the age of the cells. In addition to hierarchical cell classification, devCellPy implements the SHapley Additive exPlanations (SHAP) package (Lundberg etal, 2020), which provides the user with interpretability methods for the model and determines the positive and negative gene predictors of cell identities across all annotation layers.
 
-For more information please refer to our publication at: https://zenodo.org/record/7183939#.Y0TuEC-B3T8 
+For more information please refer to our publication at: 
 
 Galdos, F.X., Xu, S., et al. devCellPy is a machine learning-enabled pipeline for automated annotation of complex multilayered single-cell transcriptomic data. Nat Commun 13, 5271 (2022). https://doi.org/10.1038/s41467-022-33045-x
 
-To download the compiled Seurat object for the murine cardiac developmental atlas reported in our paper, please visit the following Zenodo link: 
-
-
+To download the compiled Seurat object for the murine cardiac developmental atlas reported in our paper, please visit the following Zenodo link: https://zenodo.org/record/7183939#.Y0TuEC-B3T8 
 
 
 # Documentation
