@@ -1,5 +1,5 @@
-from importing_modules import *
-import config
+from devCellPy.importing_modules import *
+import devCellPy.config as config
 import helpers
 from layer import Layer
 
@@ -38,9 +38,9 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     elif train_normexpr[-4:] == 'h5ad':
         helpers.h5ad2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-4] + 'pkl'
-    else:
+    elif train_normexpr[-3:] != 'pkl':
         raise ValueError('Format of normalized expression data file not recognized')
-    all_layers = [layer.Layer('Root', 0, 'Root')]
+    all_layers = [Layer('Root', 0, 'Root')]
     construct_tree(labelinfo, all_layers)
     print(all_layers)
     for layer in all_layers:

@@ -1,4 +1,4 @@
-from importing_modules import *
+from devCellPy.importing_modules import *
 import helpers
 
 def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit):
@@ -41,7 +41,7 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
     elif train_normexpr[-4:] == 'h5ad':
         helpers.h5ad2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-4] + 'pkl'
-    else:
+    elif train_normexpr[-3:] != 'pkl':
         raise ValueError('Format of normalized expression data file not recognized')
     all_layers = helpers.import_layers(object_paths)
     for layer in all_layers:

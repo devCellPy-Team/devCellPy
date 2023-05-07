@@ -1,4 +1,4 @@
-from importing_modules import *
+from devCellPy.importing_modules import *
 
 path = os.getcwd()
 path_cda = os.getcwd()

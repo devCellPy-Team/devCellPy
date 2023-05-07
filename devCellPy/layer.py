@@ -1,5 +1,5 @@
-from importing_modules import *
-import config
+from devCellPy.importing_modules import *
+import devCellPy.config as config
 import helpers
 
 # Object for each layer of the model

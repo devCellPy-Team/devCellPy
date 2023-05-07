@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from importing_modules import *
-import config
+from devCellPy.importing_modules import *
+import devCellPy.config as config
 import train
 import predict
 import featurerank

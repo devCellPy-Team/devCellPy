@@ -1,5 +1,5 @@
-from importing_modules import *
-import config
+from devCellPy.importing_modules import *
+import devCellPy.config as config
 import helpers
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
@@ -145,6 +145,8 @@ def reorder_pickle(path, featurenames):
         adata = sc.read_h5ad(h5adpath)
         norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
         norm_express.to_pickle(h5adpath[:-4] + 'pkl')
+    elif path[-3:] == 'pkl':
+        norm_express = pd.read_pickle(norm_express)
     else:
         raise ValueError('Format of normalized expression data file not recognized')
     print ('Training Data # of  genes: ' + str(len(featurenames)))
