@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from devCellPy.importing_modules import *
-import devCellPy.config as config
+from importing_modules import *
+import config as config
 import train
 import predict
 import featurerank
@@ -173,7 +173,7 @@ def main():
         predict.predictionAll(config.pred_normexpr, config.layer_paths)
     # If feature ranking option is called and feasible
     if config.user_fr is True and passed_fr is True:
-        predict.featureranking(config.train_normexpr, config.train_metadata, config.layer_paths, config.frsplit)
+        featurerank.featureranking(config.train_normexpr, config.train_metadata, config.layer_paths, config.frsplit)
 
     # Print computational time and memory required
     time_elapsed = (time.perf_counter() - time_start)
