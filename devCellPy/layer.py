@@ -1,5 +1,5 @@
-from devCellPy.importing_modules import *
-import devCellPy.config as config
+from importing_modules import *
+import config
 import helpers
 
 # Object for each layer of the model
@@ -91,7 +91,7 @@ class Layer:
             testsplit = 0.1
         X, Y, X_tr, X_test, Y_tr, Y_test, _ = self.read_data(normexprpkl, metadatacsv, 0.5)
         min_mae = 100000000000000
-        with open(config.path + self.name + '_finetuning.csv', 'w', encoding='UTF8', newline='') as f:
+        with open(config.path + self.path + '/' + self.name + '_finetuning.csv', 'w', encoding='UTF8', newline='') as f:
             writer = csv.writer(f)
             row = 'ETA,Max Depth,Subsample,Colsample by Tree,'
             for i in range(len(self.labeldict)):
@@ -190,7 +190,7 @@ class Layer:
         # final 100% model
         d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
-        pickle.dump(final_model, open(config.path + self.name + '_xgbmodel.sav', 'wb'))
+        pickle.dump(final_model, open(config.path + self.path + '/' + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
 
 
@@ -245,19 +245,19 @@ class Layer:
         shap_values = shap.TreeExplainer(model).shap_values(norm_express)
         shap.summary_plot(shap_values, norm_express, show=False)
         plt.tight_layout()
-        plt.savefig(config.path + self.name + '_overallfr.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_overallfr.svg')
         plt.clf()
         for i in range(len(self.labeldict)):
             shap.summary_plot(shap_values[i], norm_express, show=False)
             plt.tight_layout()
-            plt.savefig(config.path + self.name + '_' + helpers.alphanumeric(self.labeldict[i]) + 'fr.svg')
+            plt.savefig(config.path + self.path + '/' + self.name + '_' + helpers.alphanumeric(self.labeldict[i]) + 'fr.svg')
             #np.savetxt(path + name + '_class'+str(i)+'fr.csv', shap_values[i], delimiter=",")
             plt.clf()
 
         vals = np.abs(shap_values).mean(0)
         feature_importance = pd.DataFrame(list(zip(norm_express.columns, sum(vals))), columns=['Gene','Feature Importance Value'])
         feature_importance.sort_values(by=['Feature Importance Value'], ascending=False, inplace=True)
-        feature_importance.to_csv(config.path + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
+        feature_importance.to_csv(config.path + self.path + '/' + self.name + '_featureimportances.csv', sep=',', encoding='utf-8')
 
         print('Overall Feature Ranking: ' + self.name + '_overallfr.svg')
         for i in range(len(self.labeldict)):
@@ -363,7 +363,7 @@ class Layer:
                 predictions_xgb[i] = len(self.labeldict)-1
         target_names = [str(x) for x in sorted(list(set(Y_test).union(predictions_xgb)))]
         metrics = classification_report(Y_test, predictions_xgb, target_names=target_names)
-        with open(config.path + self.name + '_' + cv_final_val + 'metrics.txt', 'a+') as f:
+        with open(config.path + self.path + '/' + self.name + '_' + cv_final_val + 'metrics.txt', 'a+') as f:
             print(metrics, file=f)
         del self.labeldict[len(self.labeldict)-1]
 
@@ -386,7 +386,7 @@ class Layer:
                     predictions_xgb[i] = len(self.labeldict)-1
                     counter += 1
             print('Unclassified # of cells w/ probability cutoff=' + str(cutoff) + ': ' + str(counter))
-            f = open(config.path + self.name + '_' + train_val + 'predictions_reject' + str(cutoff) + '.csv','w')
+            f = open(config.path + self.path + '/' + self.name + '_' + train_val + 'predictions_reject' + str(cutoff) + '.csv','w')
             if Y_test is not None:
                 f.write('Cell ID,True Label,Predicted Label')
             else:
@@ -450,7 +450,7 @@ class Layer:
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
         plt.tight_layout()
-        plt.savefig(config.path + self.name + '_' + train_val + 'confusionmatrix.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_' + train_val + 'confusionmatrix.svg')
         plt.clf()
 
 
@@ -500,7 +500,7 @@ class Layer:
         plt.ylabel('True Positive Rate')
         plt.title('Overall ROC Curves')
         plt.legend(loc="lower right")
-        plt.savefig(config.path + self.name + '_miacroroc.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_miacroroc.svg')
         plt.clf()
         
         plt.figure()
@@ -515,7 +515,7 @@ class Layer:
         plt.ylabel('True Positive Rate')
         plt.title('Class ROC Curves')
         plt.legend(loc="lower right")
-        plt.savefig(config.path + self.name + '_classroc.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_classroc.svg')
         plt.clf()
 
         plt.figure()
@@ -538,7 +538,7 @@ class Layer:
         plt.ylabel('True Positive Rate')
         plt.title('All ROC Curves')
         plt.legend(loc="lower right")
-        plt.savefig(config.path + self.name + '_allroc.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_allroc.svg')
         plt.clf()
 
 
@@ -581,5 +581,5 @@ class Layer:
         plt.ylabel('Precision')
         plt.title('PR Curves')
         plt.legend(loc="lower left")
-        plt.savefig(config.path + self.name + '_allpr.svg')
+        plt.savefig(config.path + self.path + '/' + self.name + '_allpr.svg')
         plt.clf()

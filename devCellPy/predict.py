@@ -1,5 +1,5 @@
-from devCellPy.importing_modules import *
-import devCellPy.config as config
+from importing_modules import *
+import config
 import helpers
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
@@ -28,11 +28,10 @@ def check_predictionfiles(val_normexpr, val_metadata, layer_paths):
 # Conducts prediction in specified layers separated into different folders by name
 # Creates directory 'predictionOne' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionOne(val_normexpr, val_metadata, object_paths):
-    global path, orig_path
-    path = os.path.join(path, 'devcellpy_predictOne_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
-    orig_path = path
-    os.mkdir(path)
-    os.chdir(path)
+    config.path = os.path.join(config.path, 'devcellpy_predictOne_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    config.path += '/'
+    os.makedirs(config.path)
+    os.chdir(config.path)
     all_layers = helpers.import_layers(object_paths)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
@@ -41,26 +40,24 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     elif val_normexpr[-4:] == 'h5ad':
         val_normexpr = val_normexpr[:-4] + 'pkl'
     for layer in all_layers:
-        path = os.path.join(path, layer.name)
-        os.mkdir(path)
+        path = os.path.join(config.path, layer.path)
+        os.makedirs(path)
         os.chdir(path)
         path = path + '/'
         layer.predict_layer([0, config.rejection_cutoff], val_normexpr, val_metadata)
-        os.chdir(orig_path) # return to prediction directory
+        os.chdir(config.path) # return to prediction directory
         path = os.getcwd()
     print('Prediction Complete')
     os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()
 
 
 # Conducts prediction in all layers in one folder
 # Creates directory 'predictionAll' in devcellpy_results folder, defines 'Root' as topmost layer
 def predictionAll(val_normexpr, object_paths):
-    global path
-    path = os.path.join(path, 'devcellpy_predictAll_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
-    os.mkdir(path)
-    os.chdir(path)
-    path = path + '/'
+    config.path = os.path.join(config.path, 'devcellpy_predictAll_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    config.path += '/'
+    os.makedirs(config.path)
+    os.chdir(config.path)
 
     all_layers = helpers.import_layers(object_paths)
     print(all_layers)
@@ -84,7 +81,7 @@ def predictionAll(val_normexpr, object_paths):
     all_cellnames = all_cellnames.ravel()
     Y = None
 
-    f = open(path + 'predictionall_reject' + str(config.rejection_cutoff) + '.csv','w')
+    f = open(config.path + 'predictionall_reject' + str(config.rejection_cutoff) + '.csv','w')
     for i in range(len(all_cellnames)):
         sample = np.array(X[i])#.reshape((-1,1))
         sample = np.vstack((sample, np.zeros(len(feature_names))))
@@ -119,8 +116,6 @@ def predictionAll(val_normexpr, object_paths):
     f.close()
 
     print('Prediction Complete')
-    os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()
 
 
 # Converts the normalized expression csv into a pkl
@@ -146,7 +141,7 @@ def reorder_pickle(path, featurenames):
         norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
         norm_express.to_pickle(h5adpath[:-4] + 'pkl')
     elif path[-3:] == 'pkl':
-        norm_express = pd.read_pickle(norm_express)
+        norm_express = pd.read_pickle(path)
     else:
         raise ValueError('Format of normalized expression data file not recognized')
     print ('Training Data # of  genes: ' + str(len(featurenames)))
@@ -175,7 +170,7 @@ def reorder_pickle(path, featurenames):
         missing_counter += 1
     # Overlapping + missing = training total
     print ('Missing # of genes: ' + str(missing_counter))
-    norm_express.to_pickle(csvpath[:-3] + 'pkl')
+    norm_express.to_pickle(path[:-4] + '_reordered.pkl')
 
 
 # Utility function, searches a list of all_layers for a layer with the given name

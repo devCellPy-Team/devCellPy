@@ -1,4 +1,5 @@
-from devCellPy.importing_modules import *
+from importing_modules import *
+import config
 import helpers
 
 def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit):
@@ -30,11 +31,10 @@ def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frspl
 # Conducts prediction in all layers separated into different folders by name
 # Creates directory 'prediction' in devcellpy_results folder, defines 'Root' as topmost layer
 def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
-    global path, orig_path
-    path = os.path.join(path, 'devcellpy_featureranking_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
-    orig_path = path
-    os.mkdir(path)
-    os.chdir(path)
+    config.path = os.path.join(config.path, 'devcellpy_featureranking_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    config.path += '/'
+    os.makedirs(config.path)
+    os.chdir(config.path)
     if train_normexpr[-3:] == 'csv':
         helpers.csv2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-3] + 'pkl'
@@ -45,13 +45,11 @@ def featureranking(train_normexpr, train_metadata, object_paths, frsplit):
         raise ValueError('Format of normalized expression data file not recognized')
     all_layers = helpers.import_layers(object_paths)
     for layer in all_layers:
-        path = os.path.join(path, layer.name)
-        os.mkdir(path)
+        path = os.path.join(config.path, layer.path)
+        os.makedirs(path)
         os.chdir(path)
         path = path + '/'
         layer.featurerank_layer(train_normexpr, train_metadata, frsplit)
-        os.chdir(orig_path) # return to prediction directory
+        os.chdir(config.path) # return to prediction directory
         path = os.getcwd()
     print('Feature Ranking Complete')
-    os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()

@@ -1,5 +1,5 @@
-from devCellPy.importing_modules import *
-import devCellPy.config as config
+from importing_modules import *
+import config
 import helpers
 from layer import Layer
 
@@ -28,10 +28,10 @@ def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, re
 # Creates directory 'training' in devcellpy_results folder, defines 'Root' as topmost layer
 # Conducts finetuning on Root layer with 50 iterations
 def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):
-    path = os.path.join(config.path, 'devcellpy_training_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
-    orig_path = path
-    os.mkdir(path)
-    os.chdir(path)
+    config.path = os.path.join(config.path, 'devcellpy_training_' + datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    config.path += '/'
+    os.makedirs(config.path)
+    os.chdir(config.path)
     if train_normexpr[-3:] == 'csv':
         helpers.csv2pkl(train_normexpr)
         train_normexpr = train_normexpr[:-3] + 'pkl'
@@ -44,8 +44,8 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
     construct_tree(labelinfo, all_layers)
     print(all_layers)
     for layer in all_layers:
-        path = os.path.join(path, layer.path)
-        os.mkdir(path)
+        path = os.path.join(config.path, layer.path)
+        os.makedirs(path)
         os.chdir(path)
         path = path + '/'
         if config.skip == None or (config.skip != None and layer.name != config.skip):
@@ -57,13 +57,11 @@ def training(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cut
             print(parameters)
             layer.train_layer(train_normexpr, train_metadata, parameters, testsplit, [0, rejection_cutoff])
             export_layer(layer, all_layers)
-        os.chdir(orig_path) # return to training directory
+        os.chdir(config.path) # return to training directory
         path = os.getcwd()
-    path = path + '/'
     training_summary(all_layers)
     print('Training Complete')
     os.chdir('..') # return to devcellpy directory
-    path = os.getcwd()
 
 
 # Constructs a list of all Layer objects from a labelinfo file
