@@ -113,6 +113,8 @@ def main():
                 config.user_predictAll = True
             elif value == 'featureRankingOne':
                 config.user_fr = True
+            else:
+                raise ValueError('Run mode option not available')
         if name in ['--trainNormExpr']:
             config.train_normexpr = value
         if name in ['--labelInfo']:
