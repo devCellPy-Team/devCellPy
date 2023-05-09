@@ -12,7 +12,7 @@ To download the compiled Seurat object for the murine cardiac developmental atla
 
 
 # Documentation
-Full tutorial of devCellPy usage available under:
+Full tutorial of devCellPy usage is available under:
 https://github.com/devCellPy-Team/devCellPy/tree/main/Tutorial
 
 # System Requirements
@@ -29,24 +29,22 @@ Feature Ranking mode of devCellPy requires a minimum of 64 GB of RAM to run. We 
 Prediction of cell types using an already trained devCellPy prediction model can be run on a standard computer with a minimum of 8 GB RAM. 
 
 # Software requirements
-
 devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal.
 NOTE: All Python and XGBoost versions must remain the same throughout usage of all training, predicting, and feature ranking options. Ex) If Python 3.7 is used to train a dataset, Python 3.7 must be used to predict a query dataset using the trained dataset.
 
 ### OS Requirements
 This package is supported for *macOS* and *Linux*. The package has been tested on the following systems:
-+ macOS: Big Sur (11.6)
++ macOS Intel: Big Sur (11.6)
++ macOS M1: Ventura (13.1)
 + Linux: CentOS-7 Version 7.9.2009
 
 ### Python Dependencies
 `devcellpy` depends on the packages found in requirements.txt.
 
-# Installation Time:
-devCellPy should install within a few minutes on a "standard" computer supporting in-memory operations. 
-
 # Installation Guide:
 devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal or Command Prompt.
 NOTE: All Python and XGBoost versions must remain the same throughout usage of all training, predicting, and feature ranking options. Ex) If Python 3.7 is used to train a dataset, Python 3.7 must be used to predict a query dataset using the trained dataset.
+devCellPy should install within a few minutes on a "standard" computer supporting in-memory operations. 
 
 ### Install from PyPi
 ```
