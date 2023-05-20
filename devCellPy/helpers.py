@@ -1,4 +1,4 @@
-from importing_modules import *
+from .importing_modules import *
 
 # Converts the normalized expression csv into a pkl
 # Expression CSV file must contain genes as row names, samples as column names

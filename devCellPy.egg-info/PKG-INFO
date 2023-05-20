@@ -1,0 +1,20 @@
+Metadata-Version: 2.1
+Name: devCellPy
+Version: 1.2.0
+Summary: devCellPy -- hierarchical multilayered classification of cells based on scRNA-seq
+Home-page: https://github.com/devCellPy-Team/devCellPy
+Author: Sidra Xu
+Author-email: sidraxu@stanford.edu
+Maintainer: Sean Wu Lab
+Maintainer-email: smwu@stanford.edu
+License: MIT
+Requires-Python: >=3.7
+License-File: LICENSE.md
+
+    devCellPy is a Python package designed for hierarchical
+    multilayered classification of cells based on single-cell
+    RNA-sequencing (scRNA-seq). It implements the machine
+    learning algorithm Extreme Gradient Boost (XGBoost)
+    (Chen and Guestrin, 2016) to automatically predict cell
+    identities across complex permutations of layers and
+    sublayers of annotation.

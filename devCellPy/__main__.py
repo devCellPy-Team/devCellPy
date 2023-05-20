@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from importing_modules import *
+from .importing_modules import *
 import config as config
 import train
 import predict

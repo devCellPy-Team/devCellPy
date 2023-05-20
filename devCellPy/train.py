@@ -1,4 +1,4 @@
-from importing_modules import *
+from .importing_modules import *
 import config
 import helpers
 from layer import Layer
