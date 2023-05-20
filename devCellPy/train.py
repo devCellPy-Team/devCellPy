@@ -1,7 +1,6 @@
 from .importing_modules import *
-import config
-import helpers
-from layer import Layer
+from . import config, helpers
+from .layer import Layer
 
 # Ensures all the user given variables for training exist or are in bounds
 def check_trainingfiles(train_normexpr, labelinfo, train_metadata, testsplit, rejection_cutoff):

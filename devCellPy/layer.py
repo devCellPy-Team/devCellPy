@@ -1,6 +1,5 @@
 from .importing_modules import *
-import config
-import helpers
+from . import config, helpers
 
 # Object for each layer of the model
 # Contains methods for subsetting data according to the metadata and label info files,

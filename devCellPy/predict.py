@@ -1,6 +1,5 @@
 from .importing_modules import *
-import config
-import helpers
+from . import config, helpers
 
 # Ensures all the user given variables for predictOne or predictAll exist and are in the correct format
 def check_predictionfiles(val_normexpr, val_metadata, layer_paths):

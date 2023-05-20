@@ -2,10 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .importing_modules import *
-import config as config
-import train
-import predict
-import featurerank
+from . import config, train, predict, featurerank
 
 # Ensures given files satisfy one of the possible pathways provided by devcellpy
 # Ensures user input for train or predict matches file inputs
