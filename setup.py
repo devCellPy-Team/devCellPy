@@ -41,9 +41,10 @@ sublayers of annotation.""",  # wrap at col 60
     include_package_data = True,
     packages = find_packages(),
     entry_points = {
-        'console_scripts': ['devCellPy=devCellPy.main:main'],
-    },
-    scripts = ['main.py']
+        'console_scripts': [
+            'devCellPy = devCellPy.__main__:main'
+            ],
+    }
 
 
 if __name__ == '__main__':
