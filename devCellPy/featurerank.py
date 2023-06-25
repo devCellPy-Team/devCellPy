@@ -1,5 +1,6 @@
 from .importing_modules import *
 from . import config, helpers
+from .layer import Layer
 
 def check_featurerankingfiles(train_normexpr, train_metadata, layer_paths, frsplit):
     passed = True

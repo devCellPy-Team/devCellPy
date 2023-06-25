@@ -1,11 +1,10 @@
 anndata>=0.9.1
 matplotlib>=3.7.1
-numpy>=1.23.5
+numpy==1.23.5
 pandas>=1.5.3 
-python>3.7.16
 scanpy>=1.9.3
 scikit-learn>=1.2.2
 seaborn>=0.12.2
 shap>=0.41.0
 umap-learn>=0.5.3
-xgboost>=1.7.3
+xgboost

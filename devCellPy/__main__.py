@@ -3,6 +3,7 @@
 
 from .importing_modules import *
 from . import config, train, predict, featurerank
+from .layer import Layer
 
 # Ensures given files satisfy one of the possible pathways provided by devcellpy
 # Ensures user input for train or predict matches file inputs

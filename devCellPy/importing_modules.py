@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings('ignore')
+
 import time
 import resource
 import sys
