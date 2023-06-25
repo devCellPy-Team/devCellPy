@@ -1,5 +1,7 @@
-from .importing_modules import *
-from . import config, helpers
+from importing_modules import *
+import config, helpers
+
+import pdb
 
 # Object for each layer of the model
 # Contains methods for subsetting data according to the metadata and label info files,
@@ -303,25 +305,17 @@ class Layer:
         subsetcriterium = self.name
 
         # Filter out cells if subsetting necessary, keep only data from given criterium
-        print(subsetcolumn, subsetcriterium, labelcolumn)
-        print(labels[labelcolumn])
-        print(list(self.labeldict.values()))
         if subsetcolumn != None:
             # Reindex norm_express and labels based on cell names in given criterium
             temp = labels.loc[labels[subsetcolumn] == subsetcriterium]
-            print(temp)
             labels = labels.reindex(index=temp.index)
             norm_express = norm_express.reindex(index=temp.index)
-        print(norm_express)
         # print (labels[labelcolumn].value_counts())
         # Remove cells with labels not provided in the dictionary, replace present keys with values
         temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
-        print(temp)
         labels = labels.reindex(index=temp.index)
         norm_express = norm_express.reindex(index=temp.index)
         print (labels[labelcolumn].value_counts())
-        print("~~~~~~~~~~~~~~~~HELLOOOO~~~~~~~~~~~~~~~~")
-        print(norm_express)
         for i in range(len(self.labeldict)):
             labels = labels.replace(self.labeldict[i],i)
 
