@@ -125,9 +125,9 @@ class Layer:
     def xgboost_model_shortver(self, X_tr, X_test, Y_tr, Y_test, params):
         params['num_class'] = len(self.labeldict)
 
-        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
+        d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=config.feature_names)
         model = xgb.train(params, d_tr, 20, verbose_eval=10)
-        d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, Y_test, feature_names=config.feature_names)
         probabilities_xgb = model.predict(d_test)
 
         returned_str = ''
@@ -158,14 +158,14 @@ class Layer:
                 print('[Fold %d/%d]' % (i + 1, kfold))
                 X_train, X_valid = X_tr[train_index], X_tr[test_index]
                 Y_train, Y_valid = Y_tr[train_index], Y_tr[test_index]
-                d_train = xgb.DMatrix(X_train, Y_train, feature_names=feature_names)
+                d_train = xgb.DMatrix(X_train, Y_train, feature_names=config.feature_names)
                 cv_model = xgb.train(params, d_train, 20, verbose_eval=500)
                 self.xgbmodel = cv_model # temporarily set xgbmodel to cv 0.9*(1-testsplit)% model
                 self.model_metrics('cv', rejectcutoffs[1], X_valid, Y_valid)
                 self.cvmetrics = self.name + '_cvmetrics.txt'
 
             # 90% model, 10% testing
-            d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=feature_names)
+            d_tr = xgb.DMatrix(X_tr, Y_tr, feature_names=config.feature_names)
             temp_model = xgb.train(params, d_tr, 20, verbose_eval=500)
             self.xgbmodel = temp_model # temporarily set xgbmodel to (1-testsplit)% model
             self.model_metrics('final', rejectcutoffs[1], X_test, Y_test)
@@ -187,7 +187,7 @@ class Layer:
             X, Y, all_cellnames = self.read_data(normexprpkl, metadatacsv)
 
         # final 100% model
-        d_all = xgb.DMatrix(X, Y, feature_names=feature_names)
+        d_all = xgb.DMatrix(X, Y, feature_names=config.feature_names)
         final_model = xgb.train(params, d_all, 20, verbose_eval=500)
         pickle.dump(final_model, open(config.path + self.path + '/' + self.name + '_xgbmodel.sav', 'wb'))
         self.xgbmodel = final_model
@@ -272,11 +272,10 @@ class Layer:
     #                                 can both be set to None if all samples are to be included
     # Converts norm_expr and label dataframes into numpy arrays X and Y, splits them into 90/10
     # Retrieves cell names of samples in 10% testing data
-    # global feature_names defined here, list of all gene names -> should be equivalent for all csvs (except subsetted versions)
+    # global feature_names set here, list of all gene names -> should be equivalent for all csvs (except subsetted versions)
     def read_data(self, normexprpkl, metadatacsv=None, testsplit=None):
         norm_express = pd.read_pickle(normexprpkl)
-        global feature_names
-        feature_names = list(norm_express)
+        config.feature_names = list(norm_express)
         print(norm_express.shape)
 
         # If validation w/o metadata, metadata not provided, return all data w/o subsetting
@@ -303,25 +302,17 @@ class Layer:
         subsetcriterium = self.name
 
         # Filter out cells if subsetting necessary, keep only data from given criterium
-        print(subsetcolumn, subsetcriterium, labelcolumn)
-        print(labels[labelcolumn])
-        print(list(self.labeldict.values()))
         if subsetcolumn != None:
             # Reindex norm_express and labels based on cell names in given criterium
             temp = labels.loc[labels[subsetcolumn] == subsetcriterium]
-            print(temp)
             labels = labels.reindex(index=temp.index)
             norm_express = norm_express.reindex(index=temp.index)
-        print(norm_express)
         # print (labels[labelcolumn].value_counts())
         # Remove cells with labels not provided in the dictionary, replace present keys with values
         temp = labels.loc[labels[labelcolumn].isin(list(self.labeldict.values()))]
-        print(temp)
         labels = labels.reindex(index=temp.index)
         norm_express = norm_express.reindex(index=temp.index)
         print (labels[labelcolumn].value_counts())
-        print("~~~~~~~~~~~~~~~~HELLOOOO~~~~~~~~~~~~~~~~")
-        print(norm_express)
         for i in range(len(self.labeldict)):
             labels = labels.replace(self.labeldict[i],i)
 
@@ -362,7 +353,7 @@ class Layer:
     # cv_final_val is a naming string to differentiate between cv, final, and validation metrics
     def model_metrics(self, cv_final_val, rejectcutoff, X_test, Y_test):
         self.add_dictentry('Unclassified')
-        d_test = xgb.DMatrix(X_test, Y_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, Y_test, feature_names=config.feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         for i in range(len(probabilities_xgb)):
@@ -382,7 +373,7 @@ class Layer:
     # A cutoff of 0 is equivalent to no rejection option
     # train_val is a naming string to differentiate between train/test predictions and validation predictions
     def cell_predictions(self, train_val, rejectcutoffs, test_cellnames, X_test, Y_test=None):
-        d_test = xgb.DMatrix(X_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, feature_names=config.feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         self.add_dictentry('Unclassified')
@@ -420,7 +411,7 @@ class Layer:
     # Outputs a confusion matrix of the Layer model's results on a provided test set
     # train_val is a naming string to differentiate between train/test predictions and validation predictions
     def cfsn_mtx(self, train_val, rejectcutoff, X_test, Y_test):
-        d_test = xgb.DMatrix(X_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, feature_names=config.feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         predictions_xgb = probabilities_xgb.argmax(axis=1)
         self.add_dictentry('Unclassified')
@@ -465,7 +456,7 @@ class Layer:
     # Calculates curves using probability values and thresholds
     # Outputs 3 figures: micro and macro ROC curves, per class ROC curves, and all combined
     def roc_curves(self, X_test, Y_test):
-        d_test = xgb.DMatrix(X_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, feature_names=config.feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2
@@ -553,7 +544,7 @@ class Layer:
     # Calculates curves using probability values and thresholds
     # Outputs 1 figure: per class PR curvs and a micro PR curve
     def pr_curves(self, X_test, Y_test):
-        d_test = xgb.DMatrix(X_test, feature_names=feature_names)
+        d_test = xgb.DMatrix(X_test, feature_names=config.feature_names)
         probabilities_xgb = self.xgbmodel.predict(d_test)
         n_classes = len(self.labeldict)
         lw = 2

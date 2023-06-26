@@ -35,10 +35,7 @@ def predictionOne(val_normexpr, val_metadata, object_paths):
     all_layers = helpers.import_layers(object_paths)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    if val_normexpr[-3:] == 'csv':
-        val_normexpr = val_normexpr[:-3] + 'pkl'
-    elif val_normexpr[-4:] == 'h5ad':
-        val_normexpr = val_normexpr[:-4] + 'pkl'
+    val_normexpr = val_normexpr[:val_normexpr.index('.')] + '_reordered.pkl'
     for layer in all_layers:
         path = os.path.join(config.path, layer.path)
         os.makedirs(path)
@@ -145,31 +142,13 @@ def reorder_pickle(path, featurenames):
     else:
         raise ValueError('Format of normalized expression data file not recognized')
     print ('Training Data # of  genes: ' + str(len(featurenames)))
+    origfeat = list(norm_express)
+    print ('Validation Data # of genes: ' + str(len(origfeat)))
+    print ('Overlapping # of genes: ' + str(len(set(featurenames).intersection(origfeat))))
 
     ## Manually reorder columns according to training data index
     # Reorder overlapping genes, remove genes not in training data
-    origfeat = list(norm_express)
-    print ('Validation Data # of genes: ' + str(len(origfeat)))
-    newindex = []
-    for i in range(len(featurenames)):
-        if featurenames[i] in origfeat:
-            newindex.append(featurenames[i])
-    print ('Overlapping # of genes: ' + str(len(newindex)))
-    norm_express = norm_express.reindex(columns=newindex)
-    # Add missing features, remove extra features to match atlas
-    i = 0
-    missing_counter = 0
-    while i < len(list(norm_express)):
-        if list(norm_express)[i] != featurenames[i]:
-            norm_express.insert(i, featurenames[i], None)
-            missing_counter += 1
-        i += 1
-    while i < len(featurenames):
-        norm_express.insert(i, featurenames[i], None)
-        i += 1
-        missing_counter += 1
-    # Overlapping + missing = training total
-    print ('Missing # of genes: ' + str(missing_counter))
+    norm_express = norm_express.reindex(columns=featurenames, fill_value=None)
     norm_express.to_pickle(path[:-4] + '_reordered.pkl')
 
 

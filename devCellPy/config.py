@@ -17,3 +17,4 @@ pred_normexpr = None
 pred_metadata = None
 layer_paths = None
 frsplit = None
+feature_names = None
