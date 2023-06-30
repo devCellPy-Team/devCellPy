@@ -60,16 +60,11 @@ def predictionAll(val_normexpr, object_paths):
     print(all_layers)
     featurenames = all_layers[0].xgbmodel.feature_names
     reorder_pickle(val_normexpr, featurenames)
-    if val_normexpr[-3:] == 'csv':
-        val_normexpr = val_normexpr[:-3] + 'pkl'
-    elif val_normexpr[-4:] == 'h5ad':
-        val_normexpr = val_normexpr[:-4] + 'pkl'
+    val_normexpr = val_normexpr[:val_normexpr.index('.')] + '_reordered.pkl'
 
     norm_express = pd.read_pickle(val_normexpr)
     feature_names = list(norm_express)
     print(norm_express.shape)
-    X = norm_express.values
-
     X = norm_express.values
     norm_express.index.name = 'cells'
     norm_express.reset_index(inplace=True)
@@ -124,19 +119,10 @@ def reorder_pickle(path, featurenames):
     # Convert data into pickles
     if path[-3:] == 'csv':
         csvpath = path
-        tp = pd.read_csv(csvpath, iterator=True, chunksize=1000)
-        norm_express = pd.concat(tp, ignore_index=True)
-        norm_express.set_index('gene', inplace=True)
-        norm_express.index.names = [None]
-        norm_express = norm_express.T
-        # print (norm_express.head())
-        # print(norm_express.T.duplicated().any())
-        norm_express.to_pickle(csvpath[:-3] + 'pkl')
+        norm_express = helpers.csv2pkl(csvpath)
     elif path[-4:] == 'h5ad':
         h5adpath = path
-        adata = sc.read_h5ad(h5adpath)
-        norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
-        norm_express.to_pickle(h5adpath[:-4] + 'pkl')
+        norm_express = helpers.h5ad2pkl(h5adpath)
     elif path[-3:] == 'pkl':
         norm_express = pd.read_pickle(path)
     else:
@@ -149,7 +135,7 @@ def reorder_pickle(path, featurenames):
     ## Manually reorder columns according to training data index
     # Reorder overlapping genes, remove genes not in training data
     norm_express = norm_express.reindex(columns=featurenames, fill_value=None)
-    norm_express.to_pickle(path[:-4] + '_reordered.pkl')
+    norm_express.to_pickle(path[:path.index('.')] + '_reordered.pkl')
 
 
 # Utility function, searches a list of all_layers for a layer with the given name

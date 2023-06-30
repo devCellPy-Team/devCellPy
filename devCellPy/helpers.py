@@ -11,13 +11,15 @@ def csv2pkl(csvpath):
     norm_express = norm_express.T
     print (norm_express.head())
     norm_express.to_pickle(csvpath[:-3] + 'pkl')
+    return norm_express
 
 
 # Converts the Seurat h5ad object into a pkl
 def h5ad2pkl(h5adpath):
     adata = sc.read_h5ad(h5adpath)
-    df = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
-    df.to_pickle(h5adpath[:-4] + 'pkl')
+    norm_express = pd.DataFrame(adata.X.toarray(), columns = adata.var.index, index = adata.obs.index)
+    norm_express.to_pickle(h5adpath[:-4] + 'pkl')
+    return norm_express
 
 
 # Remove non-alphanumeric characters from string
