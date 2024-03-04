@@ -23,6 +23,9 @@ setup(
     python_requires = '>=3.7',
     include_package_data = True,
     packages = find_packages(),
+    install_requires = ['anndata>=0.9.1', 'matplotlib>=3.7.1', 'numpy==1.23.5', 'pandas>=1.5.3',
+                        'scanpy>=1.9.3', 'scikit-learn>=1.2.2', 'seaborn>=0.12.2', 'shap>=0.41.0',
+                        'umap-learn>=0.5.3', 'xgboost'],
     entry_points = {
         'console_scripts': [
             'devCellPy = devCellPy.__main__:main'
