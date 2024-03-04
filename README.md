@@ -43,13 +43,14 @@ This package is supported for *macOS* and *Linux*. The package has been tested o
 
 # Installation Guide:
 devCellPy has been formatted into a wrapper function that can be easily installed through pip and run through the command line of the Terminal or Command Prompt.
+```
+conda create -n ENV_NAME python=3.11
+conda activate ENV_NAME
+conda install pip
+pip install devCellPy
+```
 NOTE: All Python and XGBoost versions must remain the same throughout usage of all training, predicting, and feature ranking options. Ex) If Python 3.7 is used to train a dataset, Python 3.7 must be used to predict a query dataset using the trained dataset.
 devCellPy should install within a few minutes on a "standard" computer supporting in-memory operations. 
-
-### Install from PyPi
-```
-pip3 install devcellpy
-```
 
 # License
 MIT License
